@@ -15,9 +15,16 @@ def generate_3d_model(heightmap, params):
 
     voxel_grid = trimesh.voxel.VoxelGrid(matrix)
     mesh = voxel_grid.marching_cubes
+
+    # Handle cases where the mesh is empty
+    if mesh.is_empty:
+        return None, None
+
     mesh.process()
 
     ppmm = max(heightmap.shape) / params['target_max'] if params['target_max'] > 0 else 1
+    if ppmm == 0:
+        return None, None  # Avoid division by zero
     pixel_width_mm = 1.0 / ppmm
     z_scale_mm = params['h_max'] / 255.0
     scale_transform = trimesh.transformations.scale_matrix([pixel_width_mm, pixel_width_mm, z_scale_mm])
