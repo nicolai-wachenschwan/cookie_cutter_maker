@@ -1,0 +1,11 @@
+streamlit
+opencv-python
+numpy
+Pillow
+trimesh
+scikit-image
+scipy
+stpyvista
+pyvista<0.45.0
+vtk
+manifold3d
