@@ -7,6 +7,9 @@ import io
 import pandas as pd
 import pydeck as pdk
 
+from stpyvista.utils import start_xvfb
+start_xvfb()
+
 def get_binary_image(pil_img):
     """
     Processes the uploaded image to create a clean binary image.
