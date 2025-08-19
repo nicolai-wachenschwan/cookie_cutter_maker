@@ -1,6 +1,7 @@
 import numpy as np
 import cv2
 from PIL import Image
+from skimage.morphology import remove_small_objects
 
 def find_neighbour_contour(image, row, x, prev=True):
     """Finds the next non-zero pixel in a row, starting from x."""
@@ -18,12 +19,26 @@ def denoise_image(img):
 
 def process_image(pil_image, parameters):
     """Processes an image to generate a heightmap and an insert map."""
-    gray = np.array(pil_image.convert('L'))
+    # Convert to CMYK and get the K channel
+    if pil_image.mode != 'CMYK':
+        pil_image = pil_image.convert('CMYK')
+    _, _, _, k_channel = pil_image.split()
+    k_channel_np = np.array(k_channel)
 
-    if pil_image.format in ['JPEG', 'JPG']:
-        gray = denoise_image(gray)
+    # Denoise if it's a JPEG
+    if hasattr(pil_image, 'format') and pil_image.format in ['JPEG', 'JPG']:
+        k_channel_np = denoise_image(k_channel_np)
 
-    _, binary_image = cv2.threshold(gray, 100, 255, cv2.THRESH_BINARY)
+    # Apply Otsu's thresholding
+    # We use THRESH_BINARY_INV because the K channel is black (low values) for the ink.
+    # We want the object to be white (255).
+    _, binary_image = cv2.threshold(k_channel_np, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+
+    # Remove small islands of noise
+    min_size = int(0.001 * binary_image.shape[0] * binary_image.shape[1])
+    bool_image = binary_image.astype(bool)
+    cleaned_image = remove_small_objects(bool_image, min_size=min_size)
+    binary_image = cleaned_image.astype(np.uint8) * 255
 
     outside_comp = binary_image.copy()
     cv2.floodFill(outside_comp, None, (0, 0), 220)
