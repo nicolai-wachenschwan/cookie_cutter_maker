@@ -1,0 +1,4 @@
+*.png
+skeleton_prototype.py
+__pycache__/mesh.cpython-311.pyc
+__pycache__/heightmap.cpython-311.pyc

@@ -27,7 +27,7 @@ def generate_3d_model(heightmap, params):
         return None, None  # Avoid division by zero
     pixel_width_mm = 1.0 / ppmm
     z_scale_mm = params['h_max'] / 255.0
-    scale_transform = trimesh.transformations.scale_matrix([pixel_width_mm, pixel_width_mm, z_scale_mm])
+    scale_transform = trimesh.transformations.compose_matrix(scale=[pixel_width_mm, pixel_width_mm, z_scale_mm])
     center_transform = trimesh.transformations.translation_matrix(-mesh.bounds.mean(axis=0))
     mesh.apply_transform(center_transform)
     mesh.apply_transform(scale_transform)
