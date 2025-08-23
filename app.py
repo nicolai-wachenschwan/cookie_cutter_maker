@@ -51,6 +51,7 @@ if uploaded_file is not None:
     dpi = params.get("dpi", 200)
     target_max_mm = params.get("target_max", 100.0)
     ppmm = dpi / 25.4
+    params['ppmm'] = ppmm  # Add ppmm to params
     new_size_px = int(target_max_mm * ppmm)
 
     width, height = image.size

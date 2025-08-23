@@ -22,7 +22,7 @@ def generate_3d_model(heightmap, params):
 
     mesh.process()
 
-    ppmm = max(heightmap.shape) / params['target_max'] if params['target_max'] > 0 else 1
+    ppmm = params.get("ppmm", 3.77) # 96dpi as fallback
     if ppmm == 0:
         return None  # Avoid division by zero
     pixel_width_mm = 1.0 / ppmm
