@@ -97,7 +97,7 @@ def process_image(pil_image:Image, parameters:dict):
     #composite the image:
     color_outer_contour=255
     color_inner=int((parameters.get("h_max")-parameters.get("height_dough_thickness"))/parameters.get("h_max")*255)
-    color_rim=int(parameters.get("height_rim")/parameters.get("h_max")*255)
+    color_rim=int(parameters.get("h_rim")/parameters.get("h_max")*255)
     color_connector=color_rim
     color_small_contour=int(parameters.get("h_inner")/parameters.get("h_max")*255)
     small_thres=parameters.get("small_fill")# / (input_img.width/ppmm * input_img.height/ppmm)
@@ -139,7 +139,7 @@ def process_image(pil_image:Image, parameters:dict):
 
     #add insert
     clearence=int(1*ppmm)
-    color_insert=int(parameters.get("height_rim")/parameters.get("h_max")*255)
+    color_insert=int(parameters.get("h_rim")/parameters.get("h_max")*255)
     color_inner_insert=color_inner-color_insert
     clearence_kernel=np.ones((clearence,clearence))
     extra_dil_contours=cv2.dilate(contours_binary,clearence_kernel, iterations=1)
@@ -164,7 +164,7 @@ if __name__ == "__main__":
         "target_max": 100.0,
         "min_wall": 1.0,
         "h_max": 10.0,
-        "height_rim": 2.0,
+        "h_rim": 2.0,
         "w_rim": 8.0,
         "height_dough_thickness": 2.0,
         "h_inner": 3.0,
