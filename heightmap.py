@@ -54,8 +54,9 @@ def process_image(pil_image:Image, parameters:dict):
 
     #outercontours, outerhierarchy = cv2.findContours(cv2.bitwise_not(outside), cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
     (ox,oy,ow,oh)=cv2.boundingRect(obj_mask)
-    ppmm=int(max(ow,oh)/parameters.get("target_max"))
-    parameters["ppmm"]=ppmm #pixel per mm
+    #ppmm=int(max(ow,oh)/parameters.get("target_max"))
+    #parameters["ppmm"]=ppmm #pixel per mm
+    ppmm = parameters.get("ppmm", 3.77) # 96dpi as fallback
     binary_image=closing.copy()
 
     #rim dilation 
