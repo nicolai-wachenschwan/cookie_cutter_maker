@@ -60,7 +60,7 @@ def process_image(pil_image:Image, parameters:dict):
     binary_image=closing.copy()
 
     #rim dilation 
-    rim_dilation_distance=int(ppmm*parameters.get("w_rim"))
+    rim_dilation_distance=int(ppmm*parameters.get("w_rim"))*2
     rim_kernel= np.ones((rim_dilation_distance, rim_dilation_distance), np.uint8)
     dil_4_rim=cv2.dilate(cv2.bitwise_not(binary_image), rim_kernel, iterations=1)
     #cv2.imwrite('dilated_rim.png', dil_4_rim)
@@ -73,7 +73,7 @@ def process_image(pil_image:Image, parameters:dict):
     skeleton_image = (skeleton * 255).astype(np.uint8)
     #cv2.imwrite('skeleton_image.png', skeleton_image)
     thresh=skeleton_image#cv2.bitwise_not(binary_image)
-    dilation_distance=int(0.5*ppmm*parameters.get("min_wall"))
+    dilation_distance=int(ppmm*parameters.get("min_wall"))
     kernel = np.ones((dilation_distance, dilation_distance), np.uint8)*255
     dilated_image = cv2.dilate(thresh, kernel, iterations=1)
     _,contours_binary=cv2.threshold(cv2.bitwise_or(dilated_image,cv2.bitwise_not(binary_image)),200,255,cv2.THRESH_BINARY)
