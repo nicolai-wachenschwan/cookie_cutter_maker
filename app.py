@@ -63,7 +63,7 @@ if uploaded_file is not None:
         new_width = int(new_height * width / height)
 
     image = image.resize((new_width, new_height), Image.Resampling.LANCZOS)
-    st.image(image, caption='Uploaded and Resized Image', use_column_width=True)
+    st.image(image, caption='Uploaded and Resized Image', use_container_width=True)
 
     with st.spinner('Processing image...'):
         heightmap_array, insert_map_array = process_image(image, params)
@@ -75,14 +75,14 @@ if uploaded_file is not None:
     col1, col2 = st.columns(2)
     with col1:
         st.header("Heightmap")
-        st.image(heightmap_array, caption='Generated Heightmap', use_column_width=True)
+        st.image(heightmap_array, caption='Generated Heightmap', use_container_width=True)
         buf = io.BytesIO()
         Image.fromarray(heightmap_array).save(buf, format="PNG")
         st.download_button("Download Heightmap", buf.getvalue(), "heightmap.png", "image/png", key="dl_heightmap")
 
     with col2:
         st.header("Insert Map")
-        st.image(insert_map_array, caption='Generated Insert Map', use_column_width=True)
+        st.image(insert_map_array, caption='Generated Insert Map', use_container_width=True)
         buf = io.BytesIO()
         Image.fromarray(insert_map_array).save(buf, format="PNG")
         st.download_button("Download Insert Map", buf.getvalue(), "insert_map.png", "image/png", key="dl_insertmap")
