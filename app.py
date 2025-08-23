@@ -89,15 +89,23 @@ if uploaded_file is not None:
     if st.button("Generate 3D Mesh"):
         st.header("3D Model Preview")
         with st.spinner("Generating 3D model..."):
-            stl_data, pv_mesh = generate_3d_model(st.session_state.heightmap_array, params)
+            generated_mesh = generate_3d_model(st.session_state.heightmap_array, params)
 
-            if pv_mesh and stl_data:
+            if generated_mesh:
+                st.subheader("Interactive 3D Preview")
+                pv_mesh = pv.wrap(generated_mesh)
                 plotter = pv.Plotter(window_size=[800, 600], border=False)
                 plotter.add_mesh(pv_mesh, color='lightblue', smooth_shading=True, specular=0.5, ambient=0.3)
-                plotter.view_isometric()
-                plotter.background_color = 'white'
+                plotter.view_isometric(); plotter.background_color = 'white'
                 stpyvista(plotter, key="pv_viewer")
-                st.download_button("Download STL file", stl_data, "cookie_cutter.stl", "model/stl", key="dl_stl")
+                st.subheader("Download")
+                if "output_filename" not in st.session_state:
+                    st.session_state.output_filename = "shadowboard.stl"
+                st.session_state.output_filename = st.text_input("Filename", value=st.session_state.output_filename)
+                with io.BytesIO() as f:
+                    generated_mesh.export(f, file_type='stl'); f.seek(0)
+                    stl_data = f.read()
+                st.download_button(label="📥 Download STL File", data=stl_data, file_name=st.session_state.output_filename, mime="model/stl", use_container_width=True)
             else:
                 st.error("Could not generate a 3D model from the image. This can happen if the image is empty or too simple. Try a different image or adjust the processing parameters.")
 else:
