@@ -9,7 +9,15 @@ from stpyvista.utils import start_xvfb
 
 # Import refactored logic
 from heightmap import process_image
-from mesh import create_voxel_matrix, create_mesh_from_voxel_matrix, scale_and_center_mesh, decimate_mesh
+from mesh import (
+    create_voxel_matrix,
+    create_mesh_from_voxel_matrix,
+    scale_and_center_mesh,
+    decimate_mesh,
+    convert_to_o3d,
+    decimate_o3d,
+    convert_from_o3d
+)
 
 # --- Setup ---
 start_xvfb()
@@ -31,7 +39,7 @@ params = {
     "small_fill": st.sidebar.number_input("Small Area Fill Threshold [mm^2]", min_value=0.0, value=10.0, step=0.1),
     "dpi": st.sidebar.number_input("DPI", min_value=50, value=200, step=10),
     "decimate": st.sidebar.checkbox("Decimate Mesh", value=True),
-    "decimate_faces": st.sidebar.number_input("Target Face Count", min_value=100, value=50000, step=100),
+    "decimate_ratio": st.sidebar.slider("Decimation Ratio", min_value=0.0, max_value=1.0, value=0.5, step=0.05),
 }
 # Create a copy of params for JSON export, excluding Streamlit UI elements
 params_for_export = {k: v for k, v in params.items() if not hasattr(v, 'get')}
@@ -105,23 +113,38 @@ if uploaded_file is not None:
         mesh = create_mesh_from_voxel_matrix(matrix)
         progress_bar.progress(50)
 
-        status_text.text("Step 3/4: Scaling and centering mesh...")
+        status_text.text("Step 3/6: Scaling and centering mesh...")
         generated_mesh = scale_and_center_mesh(mesh, params)
-        progress_bar.progress(75)
+        progress_bar.progress(50)
 
         original_faces = len(generated_mesh.faces)
+        st.write(f"Original face count: {original_faces}")
 
         if params["decimate"]:
-            status_text.text(f"Step 4/4: Decimating mesh to {params['decimate_faces']} faces...")
-            generated_mesh = decimate_mesh(generated_mesh, params["decimate_faces"])
+            target_ratio = params['decimate_ratio']
+            target_faces = int(original_faces * target_ratio)
+
+            status_text.text(f"Step 4/6: Converting to Open3D format...")
+            mesh_o3d = convert_to_o3d(generated_mesh)
+            progress_bar.progress(65)
+
+            status_text.text(f"Step 5/6: Decimating mesh to {target_faces} faces ({target_ratio:.0%})...")
+            decimated_mesh_o3d = decimate_o3d(mesh_o3d, target_faces)
+            progress_bar.progress(80)
+
+            status_text.text("Step 6/6: Converting back to Trimesh format...")
+            generated_mesh = convert_from_o3d(decimated_mesh_o3d)
+            progress_bar.progress(90)
+
             decimated_faces = len(generated_mesh.faces)
             st.write(f"Mesh decimated from {original_faces} to {decimated_faces} faces.")
         else:
             status_text.text("Step 4/4: Skipping mesh decimation...")
             st.write(f"Mesh has {original_faces} faces. Decimation was skipped.")
+            progress_bar.progress(100)
 
-        progress_bar.progress(100)
         status_text.text("Done!")
+        progress_bar.progress(100)
 
         if generated_mesh:
             st.subheader("Interactive 3D Preview")
