@@ -3,8 +3,8 @@ import trimesh
 import io
 import pyvista as pv
 
-def generate_3d_model(heightmap, params):
-    """Generates a 3D model from the heightmap using Trimesh and returns a trimesh mesh."""
+def create_voxel_matrix(heightmap, params):
+    """Creates a voxel matrix from the heightmap."""
     padded_map = np.pad(heightmap, pad_width=1, mode='constant', constant_values=0)
     matrix = np.zeros((padded_map.shape[0], padded_map.shape[1], 256), dtype=bool)
     for r in range(padded_map.shape[0]):
@@ -12,17 +12,22 @@ def generate_3d_model(heightmap, params):
             height = padded_map[r, c]
             if height > 0:
                 matrix[r, c, :height] = True
+    return matrix
 
+def create_mesh_from_voxel_matrix(matrix):
+    """Generates a mesh from the voxel matrix using marching cubes."""
     voxel_grid = trimesh.voxel.VoxelGrid(matrix)
     mesh = voxel_grid.marching_cubes
+    return mesh
 
-    # Handle cases where the mesh is empty
+def scale_and_center_mesh(mesh, params):
+    """Scales and centers the mesh."""
     if mesh.is_empty:
         return None
 
     mesh.process()
 
-    ppmm = params.get("ppmm", 3.77) # 96dpi as fallback
+    ppmm = params.get("ppmm", 3.77)  # 96dpi as fallback
     if ppmm == 0:
         return None  # Avoid division by zero
     pixel_width_mm = 1.0 / ppmm

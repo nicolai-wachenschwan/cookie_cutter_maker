@@ -9,7 +9,7 @@ from stpyvista.utils import start_xvfb
 
 # Import refactored logic
 from heightmap import process_image
-from mesh import generate_3d_model
+from mesh import create_voxel_matrix, create_mesh_from_voxel_matrix, scale_and_center_mesh
 
 # --- Setup ---
 start_xvfb()
@@ -89,12 +89,26 @@ if uploaded_file is not None:
 
     if st.button("Generate 3D Mesh"):
         st.header("3D Model Preview")
-        with st.spinner("Generating 3D model..."):
-            generated_mesh = generate_3d_model(st.session_state.heightmap_array, params)
 
-            if generated_mesh:
-                st.subheader("Interactive 3D Preview")
-                pv_mesh = pv.wrap(generated_mesh)
+        progress_bar = st.progress(0)
+        status_text = st.empty()
+
+        status_text.text("Step 1/3: Creating voxel matrix...")
+        matrix = create_voxel_matrix(st.session_state.heightmap_array, params)
+        progress_bar.progress(33)
+
+        status_text.text("Step 2/3: Creating mesh from voxel matrix...")
+        mesh = create_mesh_from_voxel_matrix(matrix)
+        progress_bar.progress(66)
+
+        status_text.text("Step 3/3: Scaling and centering mesh...")
+        generated_mesh = scale_and_center_mesh(mesh, params)
+        progress_bar.progress(100)
+        status_text.text("Done!")
+
+        if generated_mesh:
+            st.subheader("Interactive 3D Preview")
+            pv_mesh = pv.wrap(generated_mesh)
                 plotter = pv.Plotter(window_size=[800, 600], border=False)
                 plotter.add_mesh(pv_mesh, color='lightblue', smooth_shading=True, specular=0.5, ambient=0.3)
                 plotter.view_isometric(); plotter.background_color = 'white'
