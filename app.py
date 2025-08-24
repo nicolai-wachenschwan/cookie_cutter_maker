@@ -9,7 +9,7 @@ from stpyvista.utils import start_xvfb
 
 # Import refactored logic
 from heightmap import process_image
-from mesh import create_voxel_matrix, create_mesh_from_voxel_matrix, scale_and_center_mesh, decimate_mesh
+from mesh import create_voxel_matrix, create_mesh_from_voxel_matrix, scale_and_center_mesh
 
 # --- Setup ---
 start_xvfb()
@@ -106,16 +106,24 @@ if uploaded_file is not None:
         progress_bar.progress(50)
 
         status_text.text("Step 3/4: Scaling and centering mesh...")
-        generated_mesh = scale_and_center_mesh(mesh, params)
+        scaled_mesh = scale_and_center_mesh(mesh, params)
         progress_bar.progress(75)
 
-        original_faces = len(generated_mesh.faces)
+        # Convert to PyVista for decimation and visualization
+        pv_mesh = pv.wrap(scaled_mesh)
+        original_faces = pv_mesh.n_faces
 
-        if params["decimate"]:
-            status_text.text(f"Step 4/4: Decimating mesh to {params['decimate_faces']} faces...")
-            generated_mesh = decimate_mesh(generated_mesh, params["decimate_faces"])
-            decimated_faces = len(generated_mesh.faces)
-            st.write(f"Mesh decimated from {original_faces} to {decimated_faces} faces.")
+        if params["decimate"] and original_faces > 0:
+            target_faces = params['decimate_faces']
+            if original_faces > target_faces:
+                target_reduction = 1.0 - (target_faces / original_faces)
+                status_text.text(f"Step 4/4: Decimating mesh to ~{target_faces} faces...")
+                pv_mesh = pv_mesh.decimate(target_reduction)
+                decimated_faces = pv_mesh.n_faces
+                st.write(f"Mesh decimated from {original_faces} to {decimated_faces} faces.")
+            else:
+                status_text.text("Step 4/4: Skipping decimation (target faces >= original faces)...")
+                st.write(f"Mesh has {original_faces} faces. Decimation was skipped.")
         else:
             status_text.text("Step 4/4: Skipping mesh decimation...")
             st.write(f"Mesh has {original_faces} faces. Decimation was skipped.")
@@ -123,22 +131,27 @@ if uploaded_file is not None:
         progress_bar.progress(100)
         status_text.text("Done!")
 
-        if generated_mesh:
+        if pv_mesh:
             st.subheader("Interactive 3D Preview")
-            pv_mesh = pv.wrap(generated_mesh)
-            if pv_mesh:
-                plotter = pv.Plotter(window_size=[800, 600], border=False)
-                plotter.add_mesh(pv_mesh, color='lightblue', smooth_shading=True, specular=0.5, ambient=0.3)
-                plotter.view_isometric(); plotter.background_color = 'white'
-                stpyvista(plotter, key="pv_viewer")
-                st.subheader("Download")
-                if "output_filename" not in st.session_state:
-                    st.session_state.output_filename = "shadowboard.stl"
-                st.session_state.output_filename = st.text_input("Filename", value=st.session_state.output_filename)
-                with io.BytesIO() as f:
-                    generated_mesh.export(f, file_type='stl'); f.seek(0)
-                    stl_data = f.read()
-                st.download_button(label="📥 Download STL File", data=stl_data, file_name=st.session_state.output_filename, mime="model/stl", use_container_width=True)
+            plotter = pv.Plotter(window_size=[800, 600], border=False)
+            plotter.add_mesh(pv_mesh, color='lightblue', smooth_shading=True, specular=0.5, ambient=0.3)
+            plotter.view_isometric(); plotter.background_color = 'white'
+            stpyvista(plotter, key="pv_viewer")
+
+            st.subheader("Download")
+            if "output_filename" not in st.session_state:
+                st.session_state.output_filename = "shadowboard.stl"
+            st.session_state.output_filename = st.text_input("Filename", value=st.session_state.output_filename)
+
+            # Convert back to trimesh for export
+            vertices = pv_mesh.points
+            faces = pv_mesh.faces.reshape((-1, 4))[:, 1:4]
+            download_mesh = trimesh.Trimesh(vertices=vertices, faces=faces)
+
+            with io.BytesIO() as f:
+                download_mesh.export(f, file_type='stl'); f.seek(0)
+                stl_data = f.read()
+            st.download_button(label="📥 Download STL File", data=stl_data, file_name=st.session_state.output_filename, mime="model/stl", use_container_width=True)
         else:
             st.error("Could not generate a 3D model from the image. This can happen if the image is empty or too simple. Try a different image or adjust the processing parameters.")
 else:

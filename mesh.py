@@ -38,11 +38,3 @@ def scale_and_center_mesh(mesh, params):
     mesh.apply_transform(scale_transform)
 
     return mesh
-
-def decimate_mesh(mesh, face_count):
-    """Reduces the number of faces in the mesh to the target face count."""
-    if mesh.is_empty or len(mesh.faces) <= face_count:
-        return mesh
-
-    simplified_mesh = mesh.simplify_quadratic_decimation(face_count)
-    return simplified_mesh
