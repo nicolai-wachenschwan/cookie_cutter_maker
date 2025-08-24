@@ -109,6 +109,7 @@ if uploaded_file is not None:
         if generated_mesh:
             st.subheader("Interactive 3D Preview")
             pv_mesh = pv.wrap(generated_mesh)
+            if pv_mesh:
                 plotter = pv.Plotter(window_size=[800, 600], border=False)
                 plotter.add_mesh(pv_mesh, color='lightblue', smooth_shading=True, specular=0.5, ambient=0.3)
                 plotter.view_isometric(); plotter.background_color = 'white'
@@ -121,7 +122,7 @@ if uploaded_file is not None:
                     generated_mesh.export(f, file_type='stl'); f.seek(0)
                     stl_data = f.read()
                 st.download_button(label="📥 Download STL File", data=stl_data, file_name=st.session_state.output_filename, mime="model/stl", use_container_width=True)
-            else:
-                st.error("Could not generate a 3D model from the image. This can happen if the image is empty or too simple. Try a different image or adjust the processing parameters.")
+        else:
+            st.error("Could not generate a 3D model from the image. This can happen if the image is empty or too simple. Try a different image or adjust the processing parameters.")
 else:
     st.info("Upload an image to get started.")
