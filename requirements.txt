@@ -11,3 +11,4 @@ vtk
 manifold3d
 pydeck
 pandas
+open3d
