@@ -10,10 +10,8 @@ from stpyvista.utils import start_xvfb
 # Import refactored logic
 from heightmap import process_image
 from mesh import (
-    create_voxel_matrix,
-    create_mesh_from_voxel_matrix,
+    generate_mesh,
     scale_and_center_mesh,
-    decimate_mesh,
     convert_to_o3d,
     decimate_o3d,
     convert_from_o3d
@@ -105,17 +103,13 @@ if uploaded_file is not None:
         progress_bar = st.progress(0)
         status_text = st.empty()
 
-        status_text.text("Step 1/4: Creating voxel matrix...")
-        matrix = create_voxel_matrix(st.session_state.heightmap_array, params)
-        progress_bar.progress(25)
+        status_text.text("Step 1/3: Generating mesh...")
+        mesh = generate_mesh(st.session_state.heightmap_array, params)
+        progress_bar.progress(33)
 
-        status_text.text("Step 2/4: Creating mesh from voxel matrix...")
-        mesh = create_mesh_from_voxel_matrix(matrix)
-        progress_bar.progress(50)
-
-        status_text.text("Step 3/6: Scaling and centering mesh...")
+        status_text.text("Step 2/3: Scaling and centering mesh...")
         generated_mesh = scale_and_center_mesh(mesh, params)
-        progress_bar.progress(50)
+        progress_bar.progress(66)
 
         original_faces = len(generated_mesh.faces)
         st.write(f"Original face count: {original_faces}")
@@ -124,24 +118,20 @@ if uploaded_file is not None:
             target_ratio = params['decimate_ratio']
             target_faces = int(original_faces * target_ratio)
 
-            status_text.text(f"Step 4/6: Converting to Open3D format...")
+            status_text.text(f"Step 3/3: Decimating mesh to {target_faces} faces ({target_ratio:.0%})...")
+            # This is a multi-step process within this block
             mesh_o3d = convert_to_o3d(generated_mesh)
-            progress_bar.progress(65)
-
-            status_text.text(f"Step 5/6: Decimating mesh to {target_faces} faces ({target_ratio:.0%})...")
             decimated_mesh_o3d = decimate_o3d(mesh_o3d, target_faces)
-            progress_bar.progress(80)
-
-            status_text.text("Step 6/6: Converting back to Trimesh format...")
             generated_mesh = convert_from_o3d(decimated_mesh_o3d)
-            progress_bar.progress(90)
+            progress_bar.progress(90) # Leave some room for the final UI updates
 
             decimated_faces = len(generated_mesh.faces)
             st.write(f"Mesh decimated from {original_faces} to {decimated_faces} faces.")
         else:
-            status_text.text("Step 4/4: Skipping mesh decimation...")
+            status_text.text("Step 3/3: Skipping mesh decimation...")
             st.write(f"Mesh has {original_faces} faces. Decimation was skipped.")
-            progress_bar.progress(100)
+
+        progress_bar.progress(100)
 
         status_text.text("Done!")
         progress_bar.progress(100)
