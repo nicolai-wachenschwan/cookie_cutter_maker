@@ -9,7 +9,7 @@ from stpyvista.utils import start_xvfb
 
 # Import refactored logic
 from heightmap import process_image
-from mesh import create_voxel_matrix, create_mesh_from_voxel_matrix, scale_and_center_mesh
+from mesh import create_voxel_matrix, create_mesh_from_voxel_matrix, scale_and_center_mesh, decimate_mesh
 
 # --- Setup ---
 start_xvfb()
@@ -30,8 +30,12 @@ params = {
     "h_inner": st.sidebar.number_input("Inner Wall Height [mm]", min_value=0.1, value=3.0, step=0.1),
     "small_fill": st.sidebar.number_input("Small Area Fill Threshold [mm^2]", min_value=0.0, value=10.0, step=0.1),
     "dpi": st.sidebar.number_input("DPI", min_value=50, value=200, step=10),
+    "decimate": st.sidebar.checkbox("Decimate Mesh", value=True),
+    "decimate_faces": st.sidebar.number_input("Target Face Count", min_value=100, value=50000, step=100),
 }
-config_str = json.dumps(params, indent=4)
+# Create a copy of params for JSON export, excluding Streamlit UI elements
+params_for_export = {k: v for k, v in params.items() if not hasattr(v, 'get')}
+config_str = json.dumps(params_for_export, indent=4)
 st.sidebar.download_button(
     label="Download Config", data=config_str, file_name="cookie_config.json", mime="application/json"
 )
@@ -93,16 +97,29 @@ if uploaded_file is not None:
         progress_bar = st.progress(0)
         status_text = st.empty()
 
-        status_text.text("Step 1/3: Creating voxel matrix...")
+        status_text.text("Step 1/4: Creating voxel matrix...")
         matrix = create_voxel_matrix(st.session_state.heightmap_array, params)
-        progress_bar.progress(33)
+        progress_bar.progress(25)
 
-        status_text.text("Step 2/3: Creating mesh from voxel matrix...")
+        status_text.text("Step 2/4: Creating mesh from voxel matrix...")
         mesh = create_mesh_from_voxel_matrix(matrix)
-        progress_bar.progress(66)
+        progress_bar.progress(50)
 
-        status_text.text("Step 3/3: Scaling and centering mesh...")
+        status_text.text("Step 3/4: Scaling and centering mesh...")
         generated_mesh = scale_and_center_mesh(mesh, params)
+        progress_bar.progress(75)
+
+        original_faces = len(generated_mesh.faces)
+
+        if params["decimate"]:
+            status_text.text(f"Step 4/4: Decimating mesh to {params['decimate_faces']} faces...")
+            generated_mesh = decimate_mesh(generated_mesh, params["decimate_faces"])
+            decimated_faces = len(generated_mesh.faces)
+            st.write(f"Mesh decimated from {original_faces} to {decimated_faces} faces.")
+        else:
+            status_text.text("Step 4/4: Skipping mesh decimation...")
+            st.write(f"Mesh has {original_faces} faces. Decimation was skipped.")
+
         progress_bar.progress(100)
         status_text.text("Done!")
 
