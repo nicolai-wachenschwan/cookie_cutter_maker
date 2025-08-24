@@ -111,11 +111,17 @@ if uploaded_file is not None:
 
         original_faces = len(generated_mesh.faces)
 
-        if params["decimate"]:
-            status_text.text(f"Step 4/4: Decimating mesh to {params['decimate_faces']} faces...")
-            generated_mesh = decimate_mesh(generated_mesh, params["decimate_faces"])
-            decimated_faces = len(generated_mesh.faces)
-            st.write(f"Mesh decimated from {original_faces} to {decimated_faces} faces.")
+        if params["decimate"] and original_faces > 0:
+            target_faces = params['decimate_faces']
+            if original_faces > target_faces:
+                target_reduction = 1.0 - (target_faces / original_faces)
+                status_text.text(f"Step 4/4: Decimating mesh to {target_faces} faces...")
+                generated_mesh = decimate_mesh(generated_mesh, target_reduction)
+                decimated_faces = len(generated_mesh.faces)
+                st.write(f"Mesh decimated from {original_faces} to {decimated_faces} faces.")
+            else:
+                status_text.text("Step 4/4: Skipping decimation (target faces >= original faces)...")
+                st.write(f"Mesh has {original_faces} faces. Decimation was skipped.")
         else:
             status_text.text("Step 4/4: Skipping mesh decimation...")
             st.write(f"Mesh has {original_faces} faces. Decimation was skipped.")

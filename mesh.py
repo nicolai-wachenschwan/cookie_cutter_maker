@@ -39,10 +39,20 @@ def scale_and_center_mesh(mesh, params):
 
     return mesh
 
-def decimate_mesh(mesh, face_count):
-    """Reduces the number of faces in the mesh to the target face count."""
-    if mesh.is_empty or len(mesh.faces) <= face_count:
+def decimate_mesh(mesh, target_reduction):
+    """Reduces the number of faces in the mesh by a target reduction factor."""
+    if mesh.is_empty or target_reduction >= 1.0:
         return mesh
 
-    simplified_mesh = mesh.simplify_quadratic_decimation(face_count)
+    # Wrap the trimesh object in a PyVista PolyData object
+    pv_mesh = pv.wrap(mesh)
+
+    # Decimate the mesh
+    decimated_pv_mesh = pv_mesh.decimate(target_reduction)
+
+    # Convert back to a trimesh object
+    vertices = decimated_pv_mesh.points
+    faces = decimated_pv_mesh.faces.reshape((-1, 4))[:, 1:4]
+    simplified_mesh = trimesh.Trimesh(vertices=vertices, faces=faces)
+
     return simplified_mesh
