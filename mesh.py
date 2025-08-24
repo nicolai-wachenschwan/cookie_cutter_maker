@@ -41,41 +41,46 @@ def scale_and_center_mesh(mesh, params):
 
     return mesh
 
-def decimate_mesh(
-    mesh_in: trimesh.Trimesh, 
-    target_face_count: int
-) -> trimesh.Trimesh:
-    """
-    Reduziert die Anzahl der Faces eines Trimesh-Objekts mit Open3D.
-
-    Args:
-        mesh_in (trimesh.Trimesh): Das ursprüngliche Trimesh-Objekt.
-        target_face_count (int): Die gewünschte Anzahl an Faces im Ergebnis-Mesh.
-
-    Returns:
-        trimesh.Trimesh: Das reduzierte Trimesh-Objekt.
-    """
-    # 1. Überprüfen, ob eine Reduzierung überhaupt notwendig ist
-    if len(mesh_in.faces) <= target_face_count:
-        print("Die Face-Anzahl ist bereits kleiner oder gleich dem Ziel. Original-Mesh wird zurückgegeben.")
-        return mesh_in
-
-    # 2. Konvertierung von Trimesh zu Open3D TriangleMesh
-    # Open3D benötigt Vertices und Faces in speziellen Vektor-Formaten.
+def convert_to_o3d(mesh_in: trimesh.Trimesh) -> o3d.geometry.TriangleMesh:
+    """Converts a Trimesh object to an Open3D TriangleMesh object."""
     mesh_o3d = o3d.geometry.TriangleMesh()
     mesh_o3d.vertices = o3d.utility.Vector3dVector(mesh_in.vertices)
     mesh_o3d.triangles = o3d.utility.Vector3iVector(mesh_in.faces)
+    return mesh_o3d
 
-    # 3. Dezimierung mit Open3D durchführen
-    # Die Funktion 'simplify_quadric_decimation' ist schnell und qualitätserhaltend.
-    mesh_out_o3d = mesh_o3d.simplify_quadric_decimation(
-        target_number_of_triangles=target_face_count
-    )
+def decimate_o3d(mesh_o3d: o3d.geometry.TriangleMesh, target_face_count: int) -> o3d.geometry.TriangleMesh:
+    """Decimates an Open3D TriangleMesh object."""
+    return mesh_o3d.simplify_quadric_decimation(target_number_of_triangles=target_face_count)
 
-    # 4. Rückkonvertierung von Open3D zu Trimesh
-    # Die Geometriedaten werden aus dem Open3D-Objekt extrahiert 
-    # und in NumPy-Arrays umgewandelt, die Trimesh versteht.
-    vertices_out = np.asarray(mesh_out_o3d.vertices)
-    faces_out = np.asarray(mesh_out_o3d.triangles)
-    
+def convert_from_o3d(mesh_o3d: o3d.geometry.TriangleMesh) -> trimesh.Trimesh:
+    """Converts an Open3D TriangleMesh object back to a Trimesh object."""
+    vertices_out = np.asarray(mesh_o3d.vertices)
+    faces_out = np.asarray(mesh_o3d.triangles)
     return trimesh.Trimesh(vertices=vertices_out, faces=faces_out)
+
+def decimate_mesh(
+    mesh_in: trimesh.Trimesh, 
+    target_face_ratio: float = 0.5
+) -> trimesh.Trimesh:
+    """
+    Reduces the number of faces of a Trimesh object using Open3D.
+
+    Args:
+        mesh_in (trimesh.Trimesh): The original Trimesh object.
+        target_face_ratio (float): The desired ratio of faces in the resulting mesh.
+
+    Returns:
+        trimesh.Trimesh: The reduced Trimesh object.
+    """
+    original_face_count = len(mesh_in.faces)
+    target_face_count = int(original_face_count * target_face_ratio)
+
+    if original_face_count <= target_face_count:
+        print("The face count is already smaller than or equal to the target. Original mesh is returned.")
+        return mesh_in
+
+    mesh_o3d = convert_to_o3d(mesh_in)
+    mesh_out_o3d = decimate_o3d(mesh_o3d, target_face_count)
+    mesh_out = convert_from_o3d(mesh_out_o3d)
+    
+    return mesh_out
