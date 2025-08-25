@@ -11,10 +11,7 @@ from stpyvista.utils import start_xvfb
 from heightmap import process_image
 from mesh import (
     generate_mesh,
-    scale_and_center_mesh,
-    convert_to_o3d,
-    decimate_o3d,
-    convert_from_o3d
+    scale_and_center_mesh
 )
 
 # --- Setup ---
@@ -36,8 +33,6 @@ params = {
     "h_inner": st.sidebar.number_input("Inner Wall Height [mm]", min_value=0.1, value=3.0, step=0.1),
     "small_fill": st.sidebar.number_input("Small Area Fill Threshold [mm^2]", min_value=0.0, value=10.0, step=0.1),
     "dpi": st.sidebar.number_input("DPI", min_value=50, value=200, step=10),
-    "decimate": st.sidebar.checkbox("Decimate Mesh", value=True),
-    "decimate_ratio": st.sidebar.slider("Decimation Ratio", min_value=0.0, max_value=1.0, value=0.5, step=0.05),
 }
 # Create a copy of params for JSON export, excluding Streamlit UI elements
 params_for_export = {k: v for k, v in params.items() if not hasattr(v, 'get')}
@@ -114,23 +109,7 @@ if uploaded_file is not None:
         original_faces = len(generated_mesh.faces)
         st.write(f"Original face count: {original_faces}")
 
-        if params["decimate"]:
-            target_ratio = params['decimate_ratio']
-            target_faces = int(original_faces * target_ratio)
-
-            status_text.text(f"Step 3/3: Decimating mesh to {target_faces} faces ({target_ratio:.0%})...")
-            # This is a multi-step process within this block
-            mesh_o3d = convert_to_o3d(generated_mesh)
-            decimated_mesh_o3d = decimate_o3d(mesh_o3d, target_faces)
-            generated_mesh = convert_from_o3d(decimated_mesh_o3d)
-            progress_bar.progress(90) # Leave some room for the final UI updates
-
-            decimated_faces = len(generated_mesh.faces)
-            st.write(f"Mesh decimated from {original_faces} to {decimated_faces} faces.")
-        else:
-            status_text.text("Step 3/3: Skipping mesh decimation...")
-            st.write(f"Mesh has {original_faces} faces. Decimation was skipped.")
-
+        status_text.text("Step 3/3: Finalizing mesh...")
         progress_bar.progress(100)
 
         status_text.text("Done!")
