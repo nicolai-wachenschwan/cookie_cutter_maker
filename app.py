@@ -6,6 +6,7 @@ import json
 import pyvista as pv
 from stpyvista import stpyvista
 from stpyvista.utils import start_xvfb
+import trimesh
 
 # Import refactored logic
 from heightmap import process_image
@@ -123,7 +124,9 @@ if uploaded_file is not None:
         progress_bar.progress(33)
 
         status_text.text("Step 2/3: Scaling and centering mesh...")
-        cutter_mesh = scale_and_center_mesh(mesh, params, center=st.session_state.get("center_point"))
+        cutter_mesh,scale_transform,center_transform = scale_and_center_mesh(mesh, params)
+        st.session_state.scale_transform = scale_transform
+        st.session_state.center_transform = center_transform
         st.session_state.cutter_mesh = cutter_mesh
         progress_bar.progress(66)
 
@@ -144,10 +147,13 @@ if uploaded_file is not None:
 
         status_text.text("Step 1/3: Generating insert mesh...")
         insert_mesh_raw = generate_insert_mesh(st.session_state.insert_map_array, st.session_state.outside_mask, params)
+
         progress_bar.progress(33)
 
         status_text.text("Step 2/3: Scaling and centering mesh...")
-        insert_mesh = scale_and_center_mesh(insert_mesh_raw, params, center=st.session_state.get("center_point"))
+        insert_params = params.copy()
+        insert_params['h_max'] = params.get('h_max', 15.0) + 1.0  # Add extra height for insert
+        insert_mesh,_,_ = scale_and_center_mesh(insert_mesh_raw, insert_params, scale_transform=st.session_state.scale_transform, center_transform=st.session_state.center_transform)
         st.session_state.insert_mesh = insert_mesh
         progress_bar.progress(66)
 

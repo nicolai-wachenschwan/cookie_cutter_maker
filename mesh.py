@@ -150,7 +150,7 @@ def merge_meshes(surface_mesh, base_mesh):
   """
   return trimesh.util.concatenate(surface_mesh, base_mesh)
 
-def scale_and_center_mesh(mesh, params, center=None):
+def scale_and_center_mesh(mesh, params, scale_transform=None, center_transform=None):
     """Scales and centers the mesh."""
     if mesh.is_empty:
         return None
@@ -162,61 +162,16 @@ def scale_and_center_mesh(mesh, params, center=None):
         return None  # Avoid division by zero
     pixel_width_mm = 1.0 / ppmm
     z_scale_mm = params['h_max'] / 255.0
-    scale_transform = trimesh.transformations.compose_matrix(scale=[pixel_width_mm, pixel_width_mm, z_scale_mm])
+    if scale_transform is None:
+        scale_transform = trimesh.transformations.compose_matrix(scale=[pixel_width_mm, pixel_width_mm, z_scale_mm])
 
-    if center is None:
-        center = mesh.bounds.mean(axis=0)
-
-    center_transform = trimesh.transformations.translation_matrix(-center)
+    center = mesh.bounds.mean(axis=0)
+    if center_transform is None:
+        center_transform = trimesh.transformations.translation_matrix(-center)
     mesh.apply_transform(center_transform)
     mesh.apply_transform(scale_transform)
 
-    return mesh
-
-# def convert_to_o3d(mesh_in: trimesh.Trimesh) -> o3d.geometry.TriangleMesh:
-#     """Converts a Trimesh object to an Open3D TriangleMesh object."""
-#     mesh_o3d = o3d.geometry.TriangleMesh()
-#     mesh_o3d.vertices = o3d.utility.Vector3dVector(mesh_in.vertices)
-#     mesh_o3d.triangles = o3d.utility.Vector3iVector(mesh_in.faces)
-#     return mesh_o3d
-
-# def decimate_o3d(mesh_o3d: o3d.geometry.TriangleMesh, target_face_count: int) -> o3d.geometry.TriangleMesh:
-#     """Decimates an Open3D TriangleMesh object."""
-#     return mesh_o3d.simplify_quadric_decimation(target_number_of_triangles=target_face_count)
-
-# def convert_from_o3d(mesh_o3d: o3d.geometry.TriangleMesh) -> trimesh.Trimesh:
-#     """Converts an Open3D TriangleMesh object back to a Trimesh object."""
-#     vertices_out = np.asarray(mesh_o3d.vertices)
-#     faces_out = np.asarray(mesh_o3d.triangles)
-#     return trimesh.Trimesh(vertices=vertices_out, faces=faces_out)
-
-# def decimate_mesh(
-#     mesh_in: trimesh.Trimesh,
-#     target_face_ratio: float = 0.5
-# ) -> trimesh.Trimesh:
-#     """
-#     Reduces the number of faces of a Trimesh object using Open3D.
-
-#     Args:
-#         mesh_in (trimesh.Trimesh): The original Trimesh object.
-#         target_face_ratio (float): The desired ratio of faces in the resulting mesh.
-
-#     Returns:
-#         trimesh.Trimesh: The reduced Trimesh object.
-#     """
-#     original_face_count = len(mesh_in.faces)
-#     target_face_count = int(original_face_count * target_face_ratio)
-
-#     if original_face_count <= target_face_count:
-#         print("The face count is already smaller than or equal to the target. Original mesh is returned.")
-#         return mesh_in
-
-#     mesh_o3d = convert_to_o3d(mesh_in)
-#     mesh_out_o3d = decimate_o3d(mesh_o3d, target_face_count)
-#     mesh_out = convert_from_o3d(mesh_out_o3d)
-    
-#     return mesh_out
-
+    return mesh, scale_transform, center_transform
 
 def generate_mesh(heightmap: np.ndarray, params: dict) -> trimesh.Trimesh:
     """
@@ -250,168 +205,23 @@ def generate_insert_mesh(insert_map: np.ndarray, outside_mask: np.ndarray, param
     """
     Generates a 3D mesh for the insert.
     """
-    if np.sum(insert_map) == 0:
-        return trimesh.Trimesh()
-
-    # Create a heightmap for the insert
-    h_max = params.get("h_max", 15.0)
-    insert_height = h_max + 1
-    insert_heightmap = (insert_map > 0) * insert_height
 
     # Generate the top surface
-    insert_surface = create_mesh_from_heightmap(insert_heightmap)
-
+    insert_surface = create_mesh_from_heightmap(insert_map,cv2.bitwise_not(outside_mask))
+    #export to obj for debugging
+    #insert_surface.export('insert_surface.obj')
+    z_scale_mm = params['h_max'] / 255.0
+    
     # Create the base
-    # The mask for the base should be outside_mask bitwise_and with inverted insert map
-    inverted_insert_map = cv2.bitwise_not(insert_map)
-    base_mask = cv2.bitwise_and(outside_mask, inverted_insert_map)
 
-    # dilate base mask to connect parts
-    kernel = np.ones((3,3), np.uint8)
-    base_mask_dilated = cv2.dilate(base_mask, kernel, iterations=2)
+    insert_base = create_base_triangulation(insert_surface, mask=cv2.bitwise_not(outside_mask), z_threshold=0.5)
+    insert_base.apply_translation((0,0,-3*z_scale_mm))
+    insert_base.export('insert_base.obj')
 
-    # Generate a flat base plane using create_base_triangulation
-    # We pass the surface mesh to get the vertices, and the base_mask to filter
-    insert_base = create_base_triangulation(insert_surface, mask=base_mask_dilated, z_threshold=insert_height + 1)
+    #merge and TODO:Create Edges between base and surface (outer vertices aka non manifold parts)
 
-    # Extrude the base by 3mm
-    # We need a polygon for that. We can get it from the contours of the base mask
-    contours, _ = cv2.findContours(base_mask_dilated, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    if not contours:
-        return trimesh.Trimesh()
+    merged_mesh = merge_meshes(insert_surface, insert_base)
+    merged_mesh.fix_normals()
+    merged_mesh.process()
+    return merged_mesh
 
-    # Assuming the largest contour is the one we want to extrude
-    largest_contour = max(contours, key=cv2.contourArea)
-    polygon = trimesh.path.polygons.Polygon(largest_contour.reshape(-1, 2))
-
-    # Extrude the polygon downwards by 3mm
-    # The `generate_base` function in the prompt is a bit ambiguous.
-    # The description sounds more like an extrusion of the whole insert shape.
-    # Let's try to extrude the insert shape itself.
-
-    contours_insert, _ = cv2.findContours(insert_map, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    if not contours_insert:
-        return trimesh.Trimesh()
-
-    # Combine all contours into one polygon if there are multiple
-    all_points = np.vstack([c for c in contours_insert])
-
-    # Find the convex hull of all points to get the outer boundary
-    hull = cv2.convexHull(all_points)
-
-    polygon_insert = trimesh.path.polygons.Polygon(hull.reshape(-1, 2))
-
-    # Extrude the insert polygon
-    # The height of the extrusion is 3mm, as requested.
-    # We need to consider the scaling factor (ppmm)
-    ppmm = params.get("ppmm", 3.77)
-    extrusion_height = 3.0 # The prompt says 3mm
-
-    # Let's create the mesh by extruding the polygon
-    # The base of the insert should be at the same level as the cutter's rim
-    h_rim = params.get("h_rim", 2.0)
-
-    # The insert should be extruded downwards.
-    # We can achieve this by creating a path and then extruding.
-    # The path will be a line from z=h_rim to z=h_rim-3
-
-    # Actually, let's rethink the extrusion.
-    # The request says "extrude the base 3mm (direction: increase overall thickness)"
-    # This is a bit confusing. I will interpret it as the insert having a solid base of 3mm thickness.
-
-    # So, I'll generate the top surface at h_max+1.
-    # And a bottom surface at h_max+1 - 3mm.
-    # And then stitch them together.
-
-    # Let's use the extrusion method, it's cleaner.
-    # I will extrude the insert polygon by 3mm.
-
-    # The height of the insert surface is `h_max + 1`. Let's stick to that.
-    # The extrusion should probably be from the base of the cookie cutter up to a certain height.
-    # Let's reconsider the prompt: "extrude the base 3mm (direction: increase overall thickness)"
-    # This might mean that the base of the insert, which connects to the cutter, should be 3mm thick.
-
-    # Let's try a different approach. I will create the insert as a separate object.
-    # Top surface at h_max+1. Bottom surface at 0. Then connect them.
-
-    # The prompt is "extrude the base 3mm".
-    # This probably means the part of the insert that connects to the cutter body.
-
-    # Let's try to implement it like this:
-    # 1. Generate the insert shape as a 2D polygon.
-    # 2. Extrude it to a height of `h_max + 1`.
-    # 3. Create a base for it, which is another extrusion of a different shape, with 3mm height.
-
-    # Let's go with the initial interpretation.
-    # 1. Top surface from heightmap.
-    # 2. Base from triangulation.
-    # 3. And then what to do with the 3mm extrusion?
-
-    # "extrude the base 3mm (direction: increase overall thickness)"
-    # This could mean that the `insert_base` mesh should be extruded.
-    # `trimesh` doesn't have a direct mesh extrusion function.
-
-    # Let's go back to polygon extrusion.
-    # I'll extrude the `insert_map` contour.
-
-    # The prompt says "use the same generate-base function". This is `create_base_triangulation`.
-    # "as mask we use the „outside_mask“ of the original heightmap, bitwise_and with inverted insert map."
-    # This base is for connecting the insert to the main body.
-
-    # Let's try to build the insert part by part.
-    # Part 1: The stamp/insert itself.
-    # This is an extrusion of the `insert_map`'s contour.
-    # The prompt says "scale the height to h_max+1". This is the height of the stamp.
-
-    extrusion_height_insert = params.get("h_max") + 1.0
-
-    # We need to find the contours of the insert_map
-    contours_insert, _ = cv2.findContours(insert_map, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-
-    insert_parts = []
-    for contour in contours_insert:
-        if cv2.contourArea(contour) > 2: # Ignore very small contours
-             polygon = trimesh.path.polygons.Polygon(contour.reshape(-1, 2))
-             # Extrude from z=0 to extrusion_height_insert
-             insert_part = trimesh.creation.extrude_polygon(polygon, height=extrusion_height_insert)
-             insert_parts.append(insert_part)
-
-    if not insert_parts:
-        return trimesh.Trimesh()
-
-    insert_mesh = trimesh.util.concatenate(insert_parts)
-
-    # Part 2: The connecting base.
-    # "extrude the base 3mm (direction: increase overall thickness)"
-    # The base is defined by the mask: `outside_mask` AND NOT `insert_map`.
-
-    inverted_insert_map = cv2.bitwise_not(insert_map)
-    base_mask = cv2.bitwise_and(outside_mask, inverted_insert_map)
-
-    # Clean up the mask
-    kernel = np.ones((3,3), np.uint8)
-    base_mask = cv2.morphologyEx(base_mask, cv2.MORPH_OPEN, kernel, iterations=1)
-    base_mask = cv2.morphologyEx(base_mask, cv2.MORPH_CLOSE, kernel, iterations=2)
-
-    contours_base, _ = cv2.findContours(base_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-
-    base_parts = []
-    for contour in contours_base:
-        if cv2.contourArea(contour) > 2:
-            polygon = trimesh.path.polygons.Polygon(contour.reshape(-1, 2))
-            # Extrude by 3mm. The base should be at the bottom.
-            # So we extrude from z=0 to z=3.
-            base_part = trimesh.creation.extrude_polygon(polygon, height=3.0)
-            base_parts.append(base_part)
-
-    if base_parts:
-        base_mesh = trimesh.util.concatenate(base_parts)
-        # Combine the insert and the base
-        full_insert_mesh = trimesh.util.concatenate(insert_mesh, base_mesh)
-    else:
-        full_insert_mesh = insert_mesh
-
-    full_insert_mesh.fix_normals()
-    full_insert_mesh.process()
-
-    return full_insert_mesh
