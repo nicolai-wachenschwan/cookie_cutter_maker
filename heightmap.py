@@ -139,20 +139,22 @@ def process_image(pil_image:Image, parameters:dict):
 
 
     #add insert
-    clearence=int(1*ppmm)
-    color_insert=int(parameters.get("h_rim")/parameters.get("h_max")*255)
-    color_inner_insert=color_inner-color_insert
-    clearence_kernel=np.ones((clearence,clearence))
-    extra_dil_contours=cv2.dilate(contours_binary,clearence_kernel, iterations=1)
-    inner_insert=cv2.bitwise_and(cv2.bitwise_not(extra_dil_contours),cv2.bitwise_not(outside_mask))
-    _,colored_insert=cv2.threshold(inner_insert,1,color_insert,cv2.THRESH_BINARY)
+    # Start by copying the object mask
+    insert_map = obj_mask.copy()
 
-    inner_inner_insert=cv2.erode(colored_insert,clearence_kernel,iterations=1)
-    _,colored_inner_insert=cv2.threshold(inner_inner_insert,1,color_inner_insert,cv2.THRESH_BINARY)
+    # Copy the heightmap, than binary threshold inv at 1 (aka extract every pure black Pixel)
+    heightmap_copy = composite.copy()
+    _, black_pixels_mask = cv2.threshold(heightmap_copy, 0, 255, cv2.THRESH_BINARY_INV)
 
-    insert_composite=cv2.add(colored_insert,colored_inner_insert)
+    # Make the insert map with bitwise_and of the two masks
+    insert_map = cv2.bitwise_and(insert_map, black_pixels_mask)
 
-    return composite, insert_composite
+    # Erode 1mm to finalize the insert map
+    erosion_kernel_size = int(1 * ppmm)
+    erosion_kernel = np.ones((erosion_kernel_size, erosion_kernel_size), np.uint8)
+    insert_map = cv2.erode(insert_map, erosion_kernel, iterations=1)
+
+    return composite, insert_map
     #im_rgba=ImageOps.invert(im_rgba)
     #heightmap.save('heightmap.png')
     #insert_map.save('insert_map.png')
