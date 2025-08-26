@@ -203,25 +203,97 @@ def generate_mesh(heightmap: np.ndarray, params: dict) -> trimesh.Trimesh:
 
 def generate_insert_mesh(insert_map: np.ndarray, outside_mask: np.ndarray, params: dict) -> trimesh.Trimesh:
     """
-    Generates a 3D mesh for the insert.
+    Generates a manifold 3D mesh for the insert with corrected Z-scaling.
     """
+    from scipy.spatial import cKDTree
 
     # Generate the top surface
-    insert_surface = create_mesh_from_heightmap(insert_map,cv2.bitwise_not(outside_mask))
-    #export to obj for debugging
-    #insert_surface.export('insert_surface.obj')
-    z_scale_mm = params['h_max'] / 255.0
+    insert_surface = create_mesh_from_heightmap(insert_map, cv2.bitwise_not(outside_mask))
+    if insert_surface.is_empty:
+        return insert_surface
+
+    # --- Z-scaling fix ---
+    desired_h_max = 16.0
+    current_h_max = params.get('h_max', 16.0)
+    if current_h_max > 0:
+        z_correction_factor = desired_h_max / current_h_max
+        insert_surface.vertices[:, 2] *= z_correction_factor
     
-    # Create the base
+    # --- Manifold mesh generation ---
+    try:
+        # Find the ordered boundary vertices of the surface
+        outline = insert_surface.outline()
+        # Map outline vertices to their indices in the main mesh's vertex list
+        tree = cKDTree(insert_surface.vertices)
+        _, surface_boundary_indices = tree.query(outline.vertices)
+    except Exception as e:
+        print(f"Warning: Could not determine mesh outline, falling back to simple merge. Error: {e}")
+        z_scale_mm = desired_h_max / 255.0
+        insert_base = create_base_triangulation(insert_surface, mask=cv2.bitwise_not(outside_mask), z_threshold=0.5)
+        if not insert_base.is_empty:
+            insert_base.apply_translation((0, 0, -3 * z_scale_mm))
+            merged_mesh = merge_meshes(insert_surface, insert_base)
+        else:
+            merged_mesh = insert_surface
+        merged_mesh.fix_normals()
+        merged_mesh.process()
+        return merged_mesh
 
-    insert_base = create_base_triangulation(insert_surface, mask=cv2.bitwise_not(outside_mask), z_threshold=0.5)
-    insert_base.apply_translation((0,0,-3*z_scale_mm))
-    insert_base.export('insert_base.obj')
+    if len(surface_boundary_indices) < 3:
+        print("Warning: Not enough boundary vertices to create a solid mesh.")
+        return insert_surface
 
-    #merge and TODO:Create Edges between base and surface (outer vertices aka non manifold parts)
+    # Create vertices for the base
+    surface_boundary_vertices = insert_surface.vertices[surface_boundary_indices]
+    base_boundary_vertices = surface_boundary_vertices.copy()
 
-    merged_mesh = merge_meshes(insert_surface, insert_base)
-    merged_mesh.fix_normals()
-    merged_mesh.process()
-    return merged_mesh
+    base_thickness_mm = params.get('base_thickness', 3.0)
+    if current_h_max > 0:
+        base_z = -base_thickness_mm * (255.0 / current_h_max)
+    else:
+        base_z = 0  # Avoid division by zero
+    base_boundary_vertices[:, 2] = base_z
+
+    # Combine vertices
+    num_surface_vertices = len(insert_surface.vertices)
+    all_vertices = np.vstack([insert_surface.vertices, base_boundary_vertices])
+
+    # Create side faces
+    side_faces = []
+    num_boundary_vertices = len(surface_boundary_indices)
+    base_indices_offset = num_surface_vertices
+
+    for i in range(num_boundary_vertices):
+        p1_idx = surface_boundary_indices[i]
+        p2_idx = surface_boundary_indices[(i + 1) % num_boundary_vertices]
+        p3_idx = base_indices_offset + i
+        p4_idx = base_indices_offset + ((i + 1) % num_boundary_vertices)
+
+        side_faces.append([p1_idx, p4_idx, p2_idx])
+        side_faces.append([p1_idx, p3_idx, p4_idx])
+
+    # Create base faces by triangulating the base polygon
+    try:
+        # Project to 2D for Delaunay triangulation
+        base_polygon_2d = base_boundary_vertices[:, :2]
+        tri = Delaunay(base_polygon_2d)
+        base_triangles = tri.simplices
+
+        # Offset indices to match the combined vertex list
+        base_faces = base_triangles + base_indices_offset
+        # Ensure faces are pointing downwards (outward from the mesh)
+        base_faces = base_faces[:, ::-1]
+    except Exception as e:
+        print(f"Warning: Delaunay triangulation for base failed: {e}")
+        base_faces = np.empty((0, 3), dtype=np.int64)
+
+    # Combine all faces
+    all_faces = np.vstack([insert_surface.faces, side_faces, base_faces])
+
+    # Create the final mesh
+    final_mesh = trimesh.Trimesh(vertices=all_vertices, faces=all_faces)
+    final_mesh.fix_normals()
+    final_mesh.process()
+
+    return final_mesh
 
