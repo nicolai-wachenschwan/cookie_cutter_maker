@@ -154,7 +154,7 @@ def process_image(pil_image:Image, parameters:dict):
     erosion_kernel = np.ones((erosion_kernel_size, erosion_kernel_size), np.uint8)
     insert_map = cv2.erode(insert_map, erosion_kernel, iterations=1)
 
-    return composite, insert_map
+    return composite, insert_map, outside_mask
     #im_rgba=ImageOps.invert(im_rgba)
     #heightmap.save('heightmap.png')
     #insert_map.save('insert_map.png')

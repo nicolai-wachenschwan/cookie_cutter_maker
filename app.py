@@ -11,6 +11,7 @@ from stpyvista.utils import start_xvfb
 from heightmap import process_image
 from mesh import (
     generate_mesh,
+    generate_insert_mesh,
     scale_and_center_mesh
 )
 
@@ -48,6 +49,8 @@ if 'heightmap_array' not in st.session_state:
     st.session_state.heightmap_array = None
 if 'insert_map_array' not in st.session_state:
     st.session_state.insert_map_array = None
+if 'outside_mask' not in st.session_state:
+    st.session_state.outside_mask = None
 
 if uploaded_file is not None:
     image = Image.open(uploaded_file)
@@ -71,9 +74,15 @@ if uploaded_file is not None:
     st.image(image, caption='Uploaded and Resized Image', use_container_width=True)
 
     with st.spinner('Processing image...'):
-        heightmap_array, insert_map_array = process_image(image, params)
+        heightmap_array, insert_map_array, outside_mask = process_image(image, params)
         st.session_state.heightmap_array = heightmap_array
         st.session_state.insert_map_array = insert_map_array
+        st.session_state.outside_mask = outside_mask
+
+        # Get heightmap dimensions for centering
+        h, w = heightmap_array.shape
+        st.session_state.center_point = np.array([w / 2, h / 2, 0])
+
         st.success("Image processing complete!")
 
     # Display results
@@ -92,21 +101,33 @@ if uploaded_file is not None:
         Image.fromarray(insert_map_array).save(buf, format="PNG")
         st.download_button("Download Insert Map", buf.getvalue(), "insert_map.png", "image/png", key="dl_insertmap")
 
-    if st.button("Generate 3D Mesh"):
+    col1, col2 = st.columns(2)
+    with col1:
+        generate_cutter = st.button("Generate 3D Cutter", use_container_width=True)
+    with col2:
+        generate_insert = st.button("Generate Insert", use_container_width=True)
+
+    if 'cutter_mesh' not in st.session_state:
+        st.session_state.cutter_mesh = None
+    if 'insert_mesh' not in st.session_state:
+        st.session_state.insert_mesh = None
+
+    if generate_cutter:
         st.header("3D Model Preview")
 
         progress_bar = st.progress(0)
         status_text = st.empty()
 
-        status_text.text("Step 1/3: Generating mesh...")
+        status_text.text("Step 1/3: Generating cutter mesh...")
         mesh = generate_mesh(st.session_state.heightmap_array, params)
         progress_bar.progress(33)
 
         status_text.text("Step 2/3: Scaling and centering mesh...")
-        generated_mesh = scale_and_center_mesh(mesh, params)
+        cutter_mesh = scale_and_center_mesh(mesh, params, center=st.session_state.get("center_point"))
+        st.session_state.cutter_mesh = cutter_mesh
         progress_bar.progress(66)
 
-        original_faces = len(generated_mesh.faces)
+        original_faces = len(cutter_mesh.faces)
         st.write(f"Original face count: {original_faces}")
 
         status_text.text("Step 3/3: Finalizing mesh...")
@@ -115,23 +136,80 @@ if uploaded_file is not None:
         status_text.text("Done!")
         progress_bar.progress(100)
 
-        if generated_mesh:
-            st.subheader("Interactive 3D Preview")
-            pv_mesh = pv.wrap(generated_mesh)
-            if pv_mesh:
-                plotter = pv.Plotter(window_size=[800, 600], border=False)
-                plotter.add_mesh(pv_mesh, color='lightblue', smooth_shading=True, specular=0.5, ambient=0.3)
-                plotter.view_isometric(); plotter.background_color = 'white'
-                stpyvista(plotter, key="pv_viewer")
-                st.subheader("Download")
-                if "output_filename" not in st.session_state:
-                    st.session_state.output_filename = "shadowboard.stl"
-                st.session_state.output_filename = st.text_input("Filename", value=st.session_state.output_filename)
-                with io.BytesIO() as f:
-                    generated_mesh.export(f, file_type='stl'); f.seek(0)
-                    stl_data = f.read()
-                st.download_button(label="📥 Download STL File", data=stl_data, file_name=st.session_state.output_filename, mime="model/stl", use_container_width=True)
-        else:
-            st.error("Could not generate a 3D model from the image. This can happen if the image is empty or too simple. Try a different image or adjust the processing parameters.")
+    if generate_insert:
+        st.header("3D Model Preview")
+
+        progress_bar = st.progress(0)
+        status_text = st.empty()
+
+        status_text.text("Step 1/3: Generating insert mesh...")
+        insert_mesh_raw = generate_insert_mesh(st.session_state.insert_map_array, st.session_state.outside_mask, params)
+        progress_bar.progress(33)
+
+        status_text.text("Step 2/3: Scaling and centering mesh...")
+        insert_mesh = scale_and_center_mesh(insert_mesh_raw, params, center=st.session_state.get("center_point"))
+        st.session_state.insert_mesh = insert_mesh
+        progress_bar.progress(66)
+
+        original_faces = len(insert_mesh.faces)
+        st.write(f"Original face count: {original_faces}")
+
+        status_text.text("Step 3/3: Finalizing mesh...")
+        progress_bar.progress(100)
+
+        status_text.text("Done!")
+        progress_bar.progress(100)
+
+    # --- 3D Preview and Download ---
+    if st.session_state.cutter_mesh or st.session_state.insert_mesh:
+        st.subheader("Interactive 3D Preview")
+
+        view_selection = st.radio(
+            "Select view:",
+            ("Cutter", "Insert", "Both"),
+            horizontal=True,
+        )
+
+        plotter = pv.Plotter(window_size=[800, 600], border=False)
+
+        show_cutter = ("Cutter" in view_selection or "Both" in view_selection) and st.session_state.cutter_mesh
+        show_insert = ("Insert" in view_selection or "Both" in view_selection) and st.session_state.insert_mesh
+
+        if show_cutter:
+            plotter.add_mesh(pv.wrap(st.session_state.cutter_mesh), color='lightblue', name='cutter', smooth_shading=True, specular=0.5, ambient=0.3)
+        if show_insert:
+            plotter.add_mesh(pv.wrap(st.session_state.insert_mesh), color='lightgreen', name='insert', smooth_shading=True, specular=0.5, ambient=0.3)
+
+        if show_cutter or show_insert:
+            plotter.view_isometric(); plotter.background_color = 'white'
+            stpyvista(plotter, key="pv_viewer")
+
+        st.subheader("Download")
+        if "output_filename" not in st.session_state:
+            st.session_state.output_filename = "cookie_cutter.stl"
+        st.session_state.output_filename = st.text_input("Filename", value=st.session_state.output_filename)
+
+        # Placeholder for download logic
+        if st.session_state.cutter_mesh:
+            with io.BytesIO() as f:
+                st.session_state.cutter_mesh.export(f, file_type='stl'); f.seek(0)
+                stl_data = f.read()
+            st.download_button(label="📥 Download Cutter STL", data=stl_data, file_name=f"cutter_{st.session_state.output_filename}", mime="model/stl", use_container_width=True)
+
+        if st.session_state.insert_mesh:
+            with io.BytesIO() as f:
+                st.session_state.insert_mesh.export(f, file_type='stl'); f.seek(0)
+                stl_data = f.read()
+            st.download_button(label="📥 Download Insert STL", data=stl_data, file_name=f"insert_{st.session_state.output_filename}", mime="model/stl", use_container_width=True)
+
+        if st.session_state.cutter_mesh and st.session_state.insert_mesh:
+            with io.BytesIO() as f:
+                combined_mesh = trimesh.util.concatenate(st.session_state.cutter_mesh, st.session_state.insert_mesh)
+                combined_mesh.export(f, file_type='stl'); f.seek(0)
+                stl_data = f.read()
+            st.download_button(label="📥 Download Combined STL", data=stl_data, file_name=f"combined_{st.session_state.output_filename}", mime="model/stl", use_container_width=True)
+
+    elif generate_cutter or generate_insert:
+        st.error("Could not generate a 3D model. This can happen if the image is empty or too simple. Try a different image or adjust the processing parameters.")
 else:
     st.info("Upload an image to get started.")
