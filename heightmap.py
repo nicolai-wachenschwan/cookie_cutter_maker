@@ -140,19 +140,24 @@ def process_image(pil_image:Image, parameters:dict):
 
     #add insert
     # Start by copying the object mask
-    insert_map = obj_mask.copy()
+    obj_mask_copy = cv2.bitwise_not(outside_mask)
+    #cv2.imwrite('object_mask.png', obj_mask_copy)
 
     # Copy the heightmap, than binary threshold inv at 1 (aka extract every pure black Pixel)
     heightmap_copy = composite.copy()
-    _, black_pixels_mask = cv2.threshold(heightmap_copy, 0, 255, cv2.THRESH_BINARY_INV)
+    _, black_pixels_mask = cv2.threshold(heightmap_copy, 1, 255, cv2.THRESH_BINARY_INV)
+    #cv2.imwrite('black_pixels_mask.png', black_pixels_mask)
 
     # Make the insert map with bitwise_and of the two masks
-    insert_map = cv2.bitwise_and(insert_map, black_pixels_mask)
+    insert_map = cv2.bitwise_and(obj_mask_copy, black_pixels_mask)
+    #cv2.imwrite('insert_map_before_erosion.png', insert_map)
+
 
     # Erode 1mm to finalize the insert map
     erosion_kernel_size = int(1 * ppmm)
     erosion_kernel = np.ones((erosion_kernel_size, erosion_kernel_size), np.uint8)
     insert_map = cv2.erode(insert_map, erosion_kernel, iterations=1)
+    #cv2.imwrite('insert_map.png', insert_map)
 
     return composite, insert_map, outside_mask
     #im_rgba=ImageOps.invert(im_rgba)
@@ -174,6 +179,6 @@ if __name__ == "__main__":
         "small_fill": 10.0
     }
     pil_image = Image.open(image_path)
-    heightmap, insert_map = process_image(pil_image, params)
+    heightmap, insert_map, outer_mask = process_image(pil_image, params)
     cv2.imwrite('heightmap.png', heightmap)
     cv2.imwrite('insert_map.png', insert_map)
