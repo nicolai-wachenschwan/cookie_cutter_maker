@@ -55,6 +55,10 @@ if 'insert_map_array' not in st.session_state:
     st.session_state.insert_map_array = None
 if 'outside_mask' not in st.session_state:
     st.session_state.outside_mask = None
+if 'view_selection' not in st.session_state:
+    st.session_state.view_selection = "Cutter"
+if 'plotter' not in st.session_state:
+    st.session_state.plotter = pv.Plotter(window_size=[800, 600], border=False)
 
 if uploaded_file is not None:
     image = Image.open(uploaded_file)
@@ -138,7 +142,7 @@ if uploaded_file is not None:
 
         status_text.text("Step 3/3: Finalizing mesh...")
         progress_bar.progress(100)
-
+        st.session_state.view_selection = "Cutter"
         status_text.text("Done!")
         progress_bar.progress(100)
 
@@ -165,7 +169,7 @@ if uploaded_file is not None:
 
         status_text.text("Step 3/3: Finalizing mesh...")
         progress_bar.progress(100)
-
+        st.session_state.view_selection = "Insert"
         status_text.text("Done!")
         progress_bar.progress(100)
 
@@ -173,24 +177,27 @@ if uploaded_file is not None:
     if st.session_state.cutter_mesh or st.session_state.insert_mesh:
         st.subheader("Interactive 3D Preview")
 
-        view_selection = st.radio(
+        st.radio(
             "Select view:",
             ("Cutter", "Insert", "Both"),
             horizontal=True,
+            key="view_selection"
         )
 
-        plotter = pv.Plotter(window_size=[800, 600], border=False)
+        plotter = st.session_state.plotter
+        plotter.clear()
 
-        show_cutter = ("Cutter" in view_selection or "Both" in view_selection) and st.session_state.cutter_mesh
-        show_insert = ("Insert" in view_selection or "Both" in view_selection) and st.session_state.insert_mesh
+        show_cutter = ("Cutter" in st.session_state.view_selection or "Both" in st.session_state.view_selection) and st.session_state.cutter_mesh is not None
+        show_insert = ("Insert" in st.session_state.view_selection or "Both" in st.session_state.view_selection) and st.session_state.insert_mesh is not None
 
         if show_cutter:
-            plotter.add_mesh(pv.wrap(st.session_state.cutter_mesh), color='lightblue', name='cutter', smooth_shading=True, specular=0.5, ambient=0.3)
+            plotter.add_mesh(pv.wrap(st.session_state.cutter_mesh), name='cutter', color='lightblue', smooth_shading=True, specular=0.5, ambient=0.3)
         if show_insert:
-            plotter.add_mesh(pv.wrap(st.session_state.insert_mesh), color='lightgreen', name='insert', smooth_shading=True, specular=0.5, ambient=0.3)
+            plotter.add_mesh(pv.wrap(st.session_state.insert_mesh), name='insert', color='lightgreen', smooth_shading=True, specular=0.5, ambient=0.3)
 
         if show_cutter or show_insert:
-            plotter.view_isometric(); plotter.background_color = 'white'
+            plotter.view_isometric()
+            plotter.background_color = 'white'
             stpyvista(plotter, key="pv_viewer")
 
         st.subheader("Download")
