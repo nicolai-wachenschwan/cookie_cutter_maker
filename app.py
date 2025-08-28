@@ -55,11 +55,6 @@ if 'insert_map_array' not in st.session_state:
     st.session_state.insert_map_array = None
 if 'outside_mask' not in st.session_state:
     st.session_state.outside_mask = None
-if 'view_selection' not in st.session_state:
-    st.session_state.view_selection = "Cutter"
-if 'plotter' not in st.session_state:
-    st.session_state.plotter = pv.Plotter(window_size=[800, 600], border=False)
-
 if uploaded_file is not None:
     image = Image.open(uploaded_file)
 
@@ -142,7 +137,6 @@ if uploaded_file is not None:
 
         status_text.text("Step 3/3: Finalizing mesh...")
         progress_bar.progress(100)
-        st.session_state.view_selection = "Cutter"
         status_text.text("Done!")
         progress_bar.progress(100)
 
@@ -169,7 +163,6 @@ if uploaded_file is not None:
 
         status_text.text("Step 3/3: Finalizing mesh...")
         progress_bar.progress(100)
-        st.session_state.view_selection = "Insert"
         status_text.text("Done!")
         progress_bar.progress(100)
 
@@ -177,51 +170,59 @@ if uploaded_file is not None:
     if st.session_state.cutter_mesh or st.session_state.insert_mesh:
         st.subheader("Interactive 3D Preview")
 
-        st.radio(
-            "Select view:",
-            ("Cutter", "Insert", "Both"),
-            horizontal=True,
-            key="view_selection"
-        )
-
-        plotter = st.session_state.plotter
-        show_cutter = ("Cutter" in st.session_state.view_selection or "Both" in st.session_state.view_selection) and st.session_state.cutter_mesh
-        show_insert = ("Insert" in st.session_state.view_selection or "Both" in st.session_state.view_selection) and st.session_state.insert_mesh
-
-        if show_cutter:
-            plotter.add_mesh(pv.wrap(st.session_state.cutter_mesh), name='cutter', color='lightblue', smooth_shading=True, specular=0.5, ambient=0.3)
-        if show_insert:
-            plotter.add_mesh(pv.wrap(st.session_state.insert_mesh), name='insert', color='lightgreen', smooth_shading=True, specular=0.5, ambient=0.3)
-
-        if show_cutter or show_insert:
-            plotter.view_isometric()
-            plotter.background_color = 'white'
-            stpyvista(plotter, key="pv_viewer")
-
-        st.subheader("Download")
         if "output_filename" not in st.session_state:
             st.session_state.output_filename = "cookie_cutter.stl"
         st.session_state.output_filename = st.text_input("Filename", value=st.session_state.output_filename)
 
-        # Placeholder for download logic
-        if st.session_state.cutter_mesh:
-            with io.BytesIO() as f:
-                st.session_state.cutter_mesh.export(f, file_type='stl'); f.seek(0)
-                stl_data = f.read()
-            st.download_button(label="📥 Download Cutter STL", data=stl_data, file_name=f"cutter_{st.session_state.output_filename}", mime="model/stl", use_container_width=True)
+        # Define columns for the previews
+        col1, col2, col3 = st.columns(3)
 
-        if st.session_state.insert_mesh:
-            with io.BytesIO() as f:
-                st.session_state.insert_mesh.export(f, file_type='stl'); f.seek(0)
-                stl_data = f.read()
-            st.download_button(label="📥 Download Insert STL", data=stl_data, file_name=f"insert_{st.session_state.output_filename}", mime="model/stl", use_container_width=True)
+        # Cutter Preview
+        with col1:
+            if st.session_state.cutter_mesh:
+                st.subheader("Cutter")
+                plotter_cutter = pv.Plotter(window_size=[400, 400], border=False)
+                plotter_cutter.add_mesh(pv.wrap(st.session_state.cutter_mesh), name='cutter', color='lightblue', smooth_shading=True, specular=0.5, ambient=0.3)
+                plotter_cutter.view_isometric()
+                plotter_cutter.background_color = 'white'
+                stpyvista(plotter_cutter, key="pv_cutter")
 
-        if st.session_state.cutter_mesh and st.session_state.insert_mesh:
-            with io.BytesIO() as f:
-                combined_mesh = trimesh.util.concatenate(st.session_state.cutter_mesh, st.session_state.insert_mesh)
-                combined_mesh.export(f, file_type='stl'); f.seek(0)
-                stl_data = f.read()
-            st.download_button(label="📥 Download Combined STL", data=stl_data, file_name=f"combined_{st.session_state.output_filename}", mime="model/stl", use_container_width=True)
+                with io.BytesIO() as f:
+                    st.session_state.cutter_mesh.export(f, file_type='stl'); f.seek(0)
+                    stl_data = f.read()
+                st.download_button(label="📥 Download Cutter STL", data=stl_data, file_name=f"cutter_{st.session_state.output_filename}", mime="model/stl", use_container_width=True)
+
+        # Insert Preview
+        with col2:
+            if st.session_state.insert_mesh:
+                st.subheader("Insert")
+                plotter_insert = pv.Plotter(window_size=[400, 400], border=False)
+                plotter_insert.add_mesh(pv.wrap(st.session_state.insert_mesh), name='insert', color='lightgreen', smooth_shading=True, specular=0.5, ambient=0.3)
+                plotter_insert.view_isometric()
+                plotter_insert.background_color = 'white'
+                stpyvista(plotter_insert, key="pv_insert")
+
+                with io.BytesIO() as f:
+                    st.session_state.insert_mesh.export(f, file_type='stl'); f.seek(0)
+                    stl_data = f.read()
+                st.download_button(label="📥 Download Insert STL", data=stl_data, file_name=f"insert_{st.session_state.output_filename}", mime="model/stl", use_container_width=True)
+
+        # Both Preview
+        with col3:
+            if st.session_state.cutter_mesh and st.session_state.insert_mesh:
+                st.subheader("Both")
+                plotter_both = pv.Plotter(window_size=[400, 400], border=False)
+                plotter_both.add_mesh(pv.wrap(st.session_state.cutter_mesh), name='cutter', color='lightblue', smooth_shading=True, specular=0.5, ambient=0.3)
+                plotter_both.add_mesh(pv.wrap(st.session_state.insert_mesh), name='insert', color='lightgreen', smooth_shading=True, specular=0.5, ambient=0.3)
+                plotter_both.view_isometric()
+                plotter_both.background_color = 'white'
+                stpyvista(plotter_both, key="pv_both")
+
+                with io.BytesIO() as f:
+                    combined_mesh = trimesh.util.concatenate(st.session_state.cutter_mesh, st.session_state.insert_mesh)
+                    combined_mesh.export(f, file_type='stl'); f.seek(0)
+                    stl_data = f.read()
+                st.download_button(label="📥 Download Combined STL", data=stl_data, file_name=f"combined_{st.session_state.output_filename}", mime="model/stl", use_container_width=True)
 
     elif generate_cutter or generate_insert:
         st.error("Could not generate a 3D model. This can happen if the image is empty or too simple. Try a different image or adjust the processing parameters.")
