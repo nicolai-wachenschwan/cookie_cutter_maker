@@ -58,7 +58,7 @@ if 'outside_mask' not in st.session_state:
 if 'view_selection' not in st.session_state:
     st.session_state.view_selection = "Cutter"
 if 'plotter' not in st.session_state:
-    st.session_state.plotter = pv.Plotter(window_size=[800, 600], border=False
+    st.session_state.plotter = pv.Plotter(window_size=[800, 600], border=False)
 
 if uploaded_file is not None:
     image = Image.open(uploaded_file)
