@@ -7,6 +7,8 @@ import pyvista as pv
 from stpyvista import stpyvista
 from stpyvista.utils import start_xvfb
 import trimesh
+from streamlit_drawable_canvas import st_canvas
+import cv2
 
 # Import refactored logic
 from heightmap import process_image
@@ -20,7 +22,7 @@ from mesh import (
 try:
     start_xvfb()
 except Exception as e:
-    st.warning(f"(this is ok for local runs) Could not start virtual framebuffer: {e}")    
+    print("unable to start xvfb, when you run local this is fine!")#st.warning(f"(this is ok for local runs) Could not start virtual framebuffer: {e}")    
 st.set_page_config(layout="wide")
 st.title("🍪 Advanced Cookie Cutter Generator")
 st.write("Upload an image, adjust parameters, and generate a 3D model and insert for your cookie cutter.")
@@ -55,6 +57,7 @@ if 'insert_map_array' not in st.session_state:
     st.session_state.insert_map_array = None
 if 'outside_mask' not in st.session_state:
     st.session_state.outside_mask = None
+
 if uploaded_file is not None:
     image = Image.open(uploaded_file)
 
@@ -74,157 +77,191 @@ if uploaded_file is not None:
         new_width = int(new_height * width / height)
 
     image = image.resize((new_width, new_height), Image.Resampling.LANCZOS)
-    st.image(image, caption='Uploaded and Resized Image', use_container_width=True)
+    
+    # --- Drawable Canvas ---
+    st.sidebar.header("Drawing Tools")
+    stroke_width = st.sidebar.slider("Stroke width: ", 1, 25, 3)
+    stroke_color = st.sidebar.color_picker("Stroke color hex: ")
+    
+    canvas_result = st_canvas(
+        fill_color="rgba(255, 165, 0, 0.3)",  # Fixed fill color with some opacity
+        stroke_width=stroke_width,
+        stroke_color=stroke_color,
+        background_image=image,
+        update_streamlit=True,
+        height=new_height,
+        width=new_width,
+        drawing_mode="freedraw",
+        key="canvas",
+    )
 
-    with st.spinner('Processing image...'):
-        heightmap_array, insert_map_array, outside_mask = process_image(image, params)
-        st.session_state.heightmap_array = heightmap_array
-        st.session_state.insert_map_array = insert_map_array
-        st.session_state.outside_mask = outside_mask
+    if st.button("Process Image and Generate Heightmap"):
+        with st.spinner('Processing image...'):
+            # Composite the drawing on the background image
+            drawing_layer_rgba = canvas_result.image_data
+            background_gray = np.array(image.convert('L'))
 
-        # Get heightmap dimensions for centering
-        h, w = heightmap_array.shape
-        st.session_state.center_point = np.array([w / 2, h / 2, 0])
+            if drawing_layer_rgba is not None:
+                background_rgb = cv2.cvtColor(background_gray, cv2.COLOR_GRAY2RGB)
+                alpha = drawing_layer_rgba[:, :, 3] / 255.0
+                alpha_mask = np.stack([alpha, alpha, alpha], axis=-1)
+                drawing_layer_rgb = drawing_layer_rgba[:, :, :3]
+                composite_rgb = (drawing_layer_rgb * alpha_mask + background_rgb * (1.0 - alpha_mask)).astype(np.uint8)
+                final_image_np = cv2.cvtColor(composite_rgb, cv2.COLOR_RGB2GRAY)
+                final_image = Image.fromarray(final_image_np)
+            else:
+                st.warning("No canvas data received. Proceeding with the unmodified image.")
+                final_image = image
 
-        st.success("Image processing complete!")
+            heightmap_array, insert_map_array, outside_mask = process_image(final_image, params)
+            st.session_state.heightmap_array = heightmap_array
+            st.session_state.insert_map_array = insert_map_array
+            st.session_state.outside_mask = outside_mask
 
-    # Display results
-    col1, col2 = st.columns(2)
-    with col1:
-        st.header("Heightmap")
-        st.image(heightmap_array, caption='Generated Heightmap', use_container_width=True)
-        buf = io.BytesIO()
-        Image.fromarray(heightmap_array).save(buf, format="PNG")
-        st.download_button("Download Heightmap", buf.getvalue(), "heightmap.png", "image/png", key="dl_heightmap")
+            # Get heightmap dimensions for centering
+            h, w = heightmap_array.shape
+            st.session_state.center_point = np.array([w / 2, h / 2, 0])
 
-    with col2:
-        st.header("Insert Map")
-        st.image(insert_map_array, caption='Generated Insert Map', use_container_width=True)
-        buf = io.BytesIO()
-        Image.fromarray(insert_map_array).save(buf, format="PNG")
-        st.download_button("Download Insert Map", buf.getvalue(), "insert_map.png", "image/png", key="dl_insertmap")
+            st.success("Image processing complete!")
 
-    col1, col2 = st.columns(2)
-    with col1:
-        generate_cutter = st.button("Generate 3D Cutter", use_container_width=True)
-    with col2:
-        generate_insert = st.button("Generate Insert", use_container_width=True)
-
-    if 'cutter_mesh' not in st.session_state:
-        st.session_state.cutter_mesh = None
-    if 'insert_mesh' not in st.session_state:
-        st.session_state.insert_mesh = None
-
-    if generate_cutter:
-        st.header("3D Model Preview")
-
-        progress_bar = st.progress(0)
-        status_text = st.empty()
-
-        status_text.text("Step 1/3: Generating cutter mesh...")
-        mesh = generate_mesh(st.session_state.heightmap_array, params)
-        progress_bar.progress(33)
-
-        status_text.text("Step 2/3: Scaling and centering mesh...")
-        cutter_mesh,scale_transform,center_transform = scale_and_center_mesh(mesh, params)
-        st.session_state.scale_transform = scale_transform
-        st.session_state.center_transform = center_transform
-        st.session_state.cutter_mesh = cutter_mesh
-        progress_bar.progress(66)
-
-        original_faces = len(cutter_mesh.faces)
-        st.write(f"Original face count: {original_faces}")
-
-        status_text.text("Step 3/3: Finalizing mesh...")
-        progress_bar.progress(100)
-        status_text.text("Done!")
-        progress_bar.progress(100)
-
-    if generate_insert:
-        st.header("3D Model Preview")
-
-        progress_bar = st.progress(0)
-        status_text = st.empty()
-
-        status_text.text("Step 1/3: Generating insert mesh...")
-        insert_mesh_raw = generate_insert_mesh(st.session_state.insert_map_array, st.session_state.outside_mask, params)
-
-        progress_bar.progress(33)
-
-        status_text.text("Step 2/3: Scaling and centering mesh...")
-        insert_params = params.copy()
-        insert_params['h_max'] = params.get('h_max', 15.0) + 1.0  # Add extra height for insert
-        insert_mesh,_,_ = scale_and_center_mesh(insert_mesh_raw, insert_params, scale_transform=st.session_state.scale_transform, center_transform=st.session_state.center_transform)
-        st.session_state.insert_mesh = insert_mesh
-        progress_bar.progress(66)
-
-        original_faces = len(insert_mesh.faces)
-        st.write(f"Original face count: {original_faces}")
-
-        status_text.text("Step 3/3: Finalizing mesh...")
-        progress_bar.progress(100)
-        status_text.text("Done!")
-        progress_bar.progress(100)
-
-    # --- 3D Preview and Download ---
-    if st.session_state.cutter_mesh or st.session_state.insert_mesh:
-        st.subheader("Interactive 3D Preview")
-
-        if "output_filename" not in st.session_state:
-            st.session_state.output_filename = "cookie_cutter.stl"
-        st.session_state.output_filename = st.text_input("Filename", value=st.session_state.output_filename)
-
-        # Define columns for the previews
-        col1, col2, col3 = st.columns(3)
-
-        # Cutter Preview
+    if st.session_state.heightmap_array is not None:
+        # Display results
+        col1, col2 = st.columns(2)
         with col1:
-            if st.session_state.cutter_mesh:
-                st.subheader("Cutter")
-                plotter_cutter = pv.Plotter(window_size=[400, 400], border=False)
-                plotter_cutter.add_mesh(pv.wrap(st.session_state.cutter_mesh), name='cutter', color='lightblue', smooth_shading=True, specular=0.5, ambient=0.3)
-                plotter_cutter.view_isometric()
-                plotter_cutter.background_color = 'white'
-                stpyvista(plotter_cutter, key="pv_cutter")
+            st.header("Heightmap")
+            st.image(st.session_state.heightmap_array, caption='Generated Heightmap', use_container_width=True)
+            buf = io.BytesIO()
+            Image.fromarray(st.session_state.heightmap_array).save(buf, format="PNG")
+            st.download_button("Download Heightmap", buf.getvalue(), "heightmap.png", "image/png", key="dl_heightmap")
 
-                with io.BytesIO() as f:
-                    st.session_state.cutter_mesh.export(f, file_type='stl'); f.seek(0)
-                    stl_data = f.read()
-                st.download_button(label="📥 Download Cutter STL", data=stl_data, file_name=f"cutter_{st.session_state.output_filename}", mime="model/stl", use_container_width=True)
-
-        # Insert Preview
         with col2:
-            if st.session_state.insert_mesh:
-                st.subheader("Insert")
-                plotter_insert = pv.Plotter(window_size=[400, 400], border=False)
-                plotter_insert.add_mesh(pv.wrap(st.session_state.insert_mesh), name='insert', color='lightgreen', smooth_shading=True, specular=0.5, ambient=0.3)
-                plotter_insert.view_isometric()
-                plotter_insert.background_color = 'white'
-                stpyvista(plotter_insert, key="pv_insert")
+            st.header("Insert Map")
+            st.image(st.session_state.insert_map_array, caption='Generated Insert Map', use_container_width=True)
+            buf = io.BytesIO()
+            Image.fromarray(st.session_state.insert_map_array).save(buf, format="PNG")
+            st.download_button("Download Insert Map", buf.getvalue(), "insert_map.png", "image/png", key="dl_insertmap")
 
-                with io.BytesIO() as f:
-                    st.session_state.insert_mesh.export(f, file_type='stl'); f.seek(0)
-                    stl_data = f.read()
-                st.download_button(label="📥 Download Insert STL", data=stl_data, file_name=f"insert_{st.session_state.output_filename}", mime="model/stl", use_container_width=True)
+        col1, col2 = st.columns(2)
+        with col1:
+            generate_cutter = st.button("Generate 3D Cutter", use_container_width=True)
+        with col2:
+            generate_insert = st.button("Generate Insert", use_container_width=True)
 
-        # Both Preview
-        with col3:
-            if st.session_state.cutter_mesh and st.session_state.insert_mesh:
-                st.subheader("Both")
-                plotter_both = pv.Plotter(window_size=[400, 400], border=False)
-                plotter_both.add_mesh(pv.wrap(st.session_state.cutter_mesh), name='cutter', color='lightblue', smooth_shading=True, specular=0.5, ambient=0.3)
-                plotter_both.add_mesh(pv.wrap(st.session_state.insert_mesh), name='insert', color='lightgreen', smooth_shading=True, specular=0.5, ambient=0.3)
-                plotter_both.view_isometric()
-                plotter_both.background_color = 'white'
-                stpyvista(plotter_both, key="pv_both")
+        if 'cutter_mesh' not in st.session_state:
+            st.session_state.cutter_mesh = None
+        if 'insert_mesh' not in st.session_state:
+            st.session_state.insert_mesh = None
 
-                with io.BytesIO() as f:
-                    combined_mesh = trimesh.util.concatenate(st.session_state.cutter_mesh, st.session_state.insert_mesh)
-                    combined_mesh.export(f, file_type='stl'); f.seek(0)
-                    stl_data = f.read()
-                st.download_button(label="📥 Download Combined STL", data=stl_data, file_name=f"combined_{st.session_state.output_filename}", mime="model/stl", use_container_width=True)
+        if generate_cutter:
+            st.header("3D Model Preview")
 
-    elif generate_cutter or generate_insert:
-        st.error("Could not generate a 3D model. This can happen if the image is empty or too simple. Try a different image or adjust the processing parameters.")
+            progress_bar = st.progress(0)
+            status_text = st.empty()
+
+            status_text.text("Step 1/3: Generating cutter mesh...")
+            mesh = generate_mesh(st.session_state.heightmap_array, params)
+            progress_bar.progress(33)
+
+            status_text.text("Step 2/3: Scaling and centering mesh...")
+            cutter_mesh,scale_transform,center_transform = scale_and_center_mesh(mesh, params)
+            st.session_state.scale_transform = scale_transform
+            st.session_state.center_transform = center_transform
+            st.session_state.cutter_mesh = cutter_mesh
+            progress_bar.progress(66)
+
+            original_faces = len(cutter_mesh.faces)
+            st.write(f"Original face count: {original_faces}")
+
+            status_text.text("Step 3/3: Finalizing mesh...")
+            progress_bar.progress(100)
+            status_text.text("Done!")
+            progress_bar.progress(100)
+
+        if generate_insert:
+            st.header("3D Model Preview")
+
+            progress_bar = st.progress(0)
+            status_text = st.empty()
+
+            status_text.text("Step 1/3: Generating insert mesh...")
+            insert_mesh_raw = generate_insert_mesh(st.session_state.insert_map_array, st.session_state.outside_mask, params)
+
+            progress_bar.progress(33)
+
+            status_text.text("Step 2/3: Scaling and centering mesh...")
+            insert_params = params.copy()
+            insert_params['h_max'] = params.get('h_max', 15.0) + 1.0  # Add extra height for insert
+            insert_mesh,_,_ = scale_and_center_mesh(insert_mesh_raw, insert_params, scale_transform=st.session_state.scale_transform, center_transform=st.session_state.center_transform)
+            st.session_state.insert_mesh = insert_mesh
+            progress_bar.progress(66)
+
+            original_faces = len(insert_mesh.faces)
+            st.write(f"Original face count: {original_faces}")
+
+            status_text.text("Step 3/3: Finalizing mesh...")
+            progress_bar.progress(100)
+            status_text.text("Done!")
+            progress_bar.progress(100)
+
+        # --- 3D Preview and Download ---
+        if st.session_state.cutter_mesh or st.session_state.insert_mesh:
+            st.subheader("Interactive 3D Preview")
+
+            if "output_filename" not in st.session_state:
+                st.session_state.output_filename = "cookie_cutter.stl"
+            st.session_state.output_filename = st.text_input("Filename", value=st.session_state.output_filename)
+
+            # Define columns for the previews
+            col1, col2, col3 = st.columns(3)
+
+            # Cutter Preview
+            with col1:
+                if st.session_state.cutter_mesh:
+                    st.subheader("Cutter")
+                    plotter_cutter = pv.Plotter(window_size=[400, 400], border=False)
+                    plotter_cutter.add_mesh(pv.wrap(st.session_state.cutter_mesh), name='cutter', color='lightblue', smooth_shading=True, specular=0.5, ambient=0.3)
+                    plotter_cutter.view_isometric()
+                    plotter_cutter.background_color = 'white'
+                    stpyvista(plotter_cutter, key="pv_cutter")
+
+                    with io.BytesIO() as f:
+                        st.session_state.cutter_mesh.export(f, file_type='stl'); f.seek(0)
+                        stl_data = f.read()
+                    st.download_button(label="📥 Download Cutter STL", data=stl_data, file_name=f"cutter_{st.session_state.output_filename}", mime="model/stl", use_container_width=True)
+
+            # Insert Preview
+            with col2:
+                if st.session_state.insert_mesh:
+                    st.subheader("Insert")
+                    plotter_insert = pv.Plotter(window_size=[400, 400], border=False)
+                    plotter_insert.add_mesh(pv.wrap(st.session_state.insert_mesh), name='insert', color='lightgreen', smooth_shading=True, specular=0.5, ambient=0.3)
+                    plotter_insert.view_isometric()
+                    plotter_insert.background_color = 'white'
+                    stpyvista(plotter_insert, key="pv_insert")
+
+                    with io.BytesIO() as f:
+                        st.session_state.insert_mesh.export(f, file_type='stl'); f.seek(0)
+                        stl_data = f.read()
+                    st.download_button(label="📥 Download Insert STL", data=stl_data, file_name=f"insert_{st.session_state.output_filename}", mime="model/stl", use_container_width=True)
+
+            # Both Preview
+            with col3:
+                if st.session_state.cutter_mesh and st.session_state.insert_mesh:
+                    st.subheader("Both")
+                    plotter_both = pv.Plotter(window_size=[400, 400], border=False)
+                    plotter_both.add_mesh(pv.wrap(st.session_state.cutter_mesh), name='cutter', color='lightblue', smooth_shading=True, specular=0.5, ambient=0.3)
+                    plotter_both.add_mesh(pv.wrap(st.session_state.insert_mesh), name='insert', color='lightgreen', smooth_shading=True, specular=0.5, ambient=0.3)
+                    plotter_both.view_isometric()
+                    plotter_both.background_color = 'white'
+                    stpyvista(plotter_both, key="pv_both")
+
+                    with io.BytesIO() as f:
+                        combined_mesh = trimesh.util.concatenate(st.session_state.cutter_mesh, st.session_state.insert_mesh)
+                        combined_mesh.export(f, file_type='stl'); f.seek(0)
+                        stl_data = f.read()
+                    st.download_button(label="📥 Download Combined STL", data=stl_data, file_name=f"combined_{st.session_state.output_filename}", mime="model/stl", use_container_width=True)
+
+        elif generate_cutter or generate_insert:
+            st.error("Could not generate a 3D model. This can happen if the image is empty or too simple. Try a different image or adjust the processing parameters.")
 else:
     st.info("Upload an image to get started.")

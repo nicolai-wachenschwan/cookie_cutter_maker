@@ -3,6 +3,7 @@ opencv-python-headless
 numpy
 Pillow
 trimesh
+git+https://github.com/nicolai-wachenschwan/streamlit-drawable-canvas.git
 scikit-image
 scipy
 stpyvista
