@@ -186,7 +186,7 @@ if uploaded_file is not None:
 
         plotter = st.session_state.plotter
         show_cutter = ("Cutter" in st.session_state.view_selection or "Both" in st.session_state.view_selection) and st.session_state.cutter_mesh
-        show_insert = ("Insert" in st.session_state.view_selection or "Both" in st.session_state.view_selection) and st.session_state.insert_mes
+        show_insert = ("Insert" in st.session_state.view_selection or "Both" in st.session_state.view_selection) and st.session_state.insert_mesh
 
         if show_cutter:
             plotter.add_mesh(pv.wrap(st.session_state.cutter_mesh), name='cutter', color='lightblue', smooth_shading=True, specular=0.5, ambient=0.3)
