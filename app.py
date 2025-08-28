@@ -80,20 +80,78 @@ if uploaded_file is not None:
     
     # --- Drawable Canvas ---
     st.sidebar.header("Drawing Tools")
+
+    # Pipette color picker
+    if 'picked_color' not in st.session_state:
+        st.session_state.picked_color = '#000000'
+    if 'pipette_active' not in st.session_state:
+        st.session_state.pipette_active = False
+    if 'canvas_json_data' not in st.session_state:
+        st.session_state.canvas_json_data = None
+
+    # Drawing controls
     stroke_width = st.sidebar.slider("Stroke width: ", 1, 25, 3)
-    stroke_color = st.sidebar.color_picker("Stroke color hex: ")
     
+    # Color picker with pipette
+    #st.sidebar.markdown("##### Color Picker")
+    col1, col2 = st.sidebar.columns([1, 3])
+    with col1:
+        if st.button("💧 Pick color from last stroke", help="Draw on the image to pick color from there and get the last stroke deleted"):
+            st.session_state.pipette_active = not st.session_state.pipette_active
+    with col2:
+        st.session_state.picked_color = st.color_picker("Color", st.session_state.picked_color, label_visibility="collapsed")
+
+    if st.session_state.pipette_active:
+        st.sidebar.info("Pipette is active. Draw on the image to pick the average color of your stroke.")
+
     canvas_result = st_canvas(
-        fill_color="rgba(255, 165, 0, 0.3)",  # Fixed fill color with some opacity
+        fill_color="rgba(255, 165, 0, 0.3)",
         stroke_width=stroke_width,
-        stroke_color=stroke_color,
+        stroke_color=st.session_state.picked_color,
         background_image=image,
         update_streamlit=True,
         height=new_height,
         width=new_width,
         drawing_mode="freedraw",
         key="canvas",
+        display_toolbar=True,
+        initial_drawing=st.session_state.canvas_json_data,
     )
+
+    if canvas_result.json_data and st.session_state.pipette_active:
+        try:
+            # Get the last drawn path
+            path = canvas_result.json_data['objects'][-1]['path']
+            
+            # Collect colors along the path
+            colors = []
+            for point in path:
+                x, y = int(point[1]), int(point[2])
+                if 0 <= x < image.width and 0 <= y < image.height:
+                    colors.append(image.getpixel((x, y)))
+            
+            if colors:
+                # Calculate the average color
+                avg_color = np.mean(colors, axis=0).astype(int)
+                
+                # Convert to hex
+                if len(avg_color) >= 3: # RGB/RGBA
+                    hex_color = '#%02x%02x%02x' % tuple(avg_color[:3])
+                else: # Grayscale
+                    hex_color = f"#{avg_color[0]:02x}{avg_color[0]:02x}{avg_color[0]:02x}"
+                
+                st.session_state.picked_color = hex_color
+            
+            # Remove the last stroke
+            if canvas_result.json_data['objects']:
+                canvas_result.json_data['objects'].pop()
+                st.session_state.canvas_json_data = canvas_result.json_data
+
+            st.session_state.pipette_active = False
+            st.rerun()
+
+        except (IndexError, TypeError, KeyError) as e:
+            st.warning(f"Could not pick color: {e}. Please try again.")
 
     if st.button("Process Image and Generate Heightmap"):
         with st.spinner('Processing image...'):
