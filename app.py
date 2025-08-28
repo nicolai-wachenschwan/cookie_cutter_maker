@@ -17,7 +17,10 @@ from mesh import (
 )
 
 # --- Setup ---
-start_xvfb()
+try:
+    start_xvfb()
+except Exception as e:
+    st.warning(f"(this is ok for local runs) Could not start virtual framebuffer: {e}")    
 st.set_page_config(layout="wide")
 st.title("🍪 Advanced Cookie Cutter Generator")
 st.write("Upload an image, adjust parameters, and generate a 3D model and insert for your cookie cutter.")
