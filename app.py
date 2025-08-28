@@ -58,7 +58,7 @@ if 'outside_mask' not in st.session_state:
 if 'view_selection' not in st.session_state:
     st.session_state.view_selection = "Cutter"
 if 'plotter' not in st.session_state:
-    st.session_state.plotter = pv.Plotter(window_size=[800, 600], border=False)
+    st.session_state.plotter = pv.Plotter(window_size=[800, 600], border=False
 
 if uploaded_file is not None:
     image = Image.open(uploaded_file)
@@ -185,10 +185,8 @@ if uploaded_file is not None:
         )
 
         plotter = st.session_state.plotter
-        plotter.clear()
-
-        show_cutter = ("Cutter" in st.session_state.view_selection or "Both" in st.session_state.view_selection) and st.session_state.cutter_mesh is not None
-        show_insert = ("Insert" in st.session_state.view_selection or "Both" in st.session_state.view_selection) and st.session_state.insert_mesh is not None
+        show_cutter = ("Cutter" in st.session_state.view_selection or "Both" in st.session_state.view_selection) and st.session_state.cutter_mesh
+        show_insert = ("Insert" in st.session_state.view_selection or "Both" in st.session_state.view_selection) and st.session_state.insert_mes
 
         if show_cutter:
             plotter.add_mesh(pv.wrap(st.session_state.cutter_mesh), name='cutter', color='lightblue', smooth_shading=True, specular=0.5, ambient=0.3)
