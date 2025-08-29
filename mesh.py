@@ -154,28 +154,41 @@ def merge_meshes(surface_mesh, base_mesh):
   """
   return trimesh.util.concatenate(surface_mesh, base_mesh)
 
-def scale_and_center_mesh(mesh, params, scale_transform=None, center_transform=None):
+def get_transforms(heightmap_array, params):
+    """Calculates the scale and center transformations."""
+    if heightmap_array is None:
+        return None, None
+
+    # Create a temporary mesh to calculate the center
+    temp_mesh = create_mesh_from_heightmap(heightmap_array)
+    if temp_mesh.is_empty:
+        return None, None
+
+    temp_mesh.process()
+
+    ppmm = params.get("ppmm", 3.77)  # 96dpi as fallback
+    if ppmm == 0:
+        return None, None  # Avoid division by zero
+    pixel_width_mm = 1.0 / ppmm
+    z_scale_mm = params['h_max'] / 255.0
+    scale_transform = trimesh.transformations.compose_matrix(scale=[pixel_width_mm, pixel_width_mm, z_scale_mm])
+
+    center = temp_mesh.bounds.mean(axis=0)
+    center_transform = trimesh.transformations.translation_matrix(-center)
+
+    return scale_transform, center_transform
+
+
+def scale_and_center_mesh(mesh, scale_transform, center_transform):
     """Scales and centers the mesh."""
     if mesh.is_empty:
         return None
 
     mesh.process()
-
-    ppmm = params.get("ppmm", 3.77)  # 96dpi as fallback
-    if ppmm == 0:
-        return None  # Avoid division by zero
-    pixel_width_mm = 1.0 / ppmm
-    z_scale_mm = params['h_max'] / 255.0
-    if scale_transform is None:
-        scale_transform = trimesh.transformations.compose_matrix(scale=[pixel_width_mm, pixel_width_mm, z_scale_mm])
-
-    center = mesh.bounds.mean(axis=0)
-    if center_transform is None:
-        center_transform = trimesh.transformations.translation_matrix(-center)
     mesh.apply_transform(center_transform)
     mesh.apply_transform(scale_transform)
 
-    return mesh, scale_transform, center_transform
+    return mesh
 
 def generate_mesh(heightmap: np.ndarray, params: dict) -> trimesh.Trimesh:
     """
@@ -306,4 +319,3 @@ def generate_insert_mesh(insert_map: np.ndarray, outside_mask: np.ndarray, param
     final_mesh.process()
 
     return final_mesh
-

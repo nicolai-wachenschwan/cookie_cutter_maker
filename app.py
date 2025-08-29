@@ -15,6 +15,7 @@ from heightmap import process_image
 from mesh import (
     generate_mesh,
     generate_insert_mesh,
+    get_transforms,
     scale_and_center_mesh
 )
 
@@ -133,7 +134,7 @@ if uploaded_file is not None:
         new_height = new_size_px
         new_width = int(new_height * width / height)
 
-    image = image.resize((new_width, new_height), Image.Resampling.LANCZOS)
+    image = image.resize((new_width, new_height), Image.Resampling.LANCZOS).convert("RGBA")
     
     # --- Drawable Canvas ---
     st.sidebar.header("Drawing Tools")
@@ -191,11 +192,14 @@ if uploaded_file is not None:
                 # Calculate the average color
                 avg_color = np.mean(colors, axis=0).astype(int)
                 
-                # Convert to hex
-                if len(avg_color) >= 3: # RGB/RGBA
+                # Convert to hex, handling both RGB and Grayscale results
+                if isinstance(avg_color, (int, float, np.number)):
+                    hex_color = f"#{int(avg_color):02x}{int(avg_color):02x}{int(avg_color):02x}"
+                elif len(avg_color) >= 3: # RGB/RGBA
                     hex_color = '#%02x%02x%02x' % tuple(avg_color[:3])
                 else: # Grayscale
-                    hex_color = f"#{avg_color[0]:02x}{avg_color[0]:02x}{avg_color[0]:02x}"
+                    val = int(avg_color[0])
+                    hex_color = f"#{val:02x}{val:02x}{val:02x}"
                 
                 st.session_state.picked_color = hex_color
             
@@ -244,23 +248,23 @@ if uploaded_file is not None:
         col1, col2 = st.columns(2)
         with col1:
             st.header("Heightmap")
-            st.image(st.session_state.heightmap_array, caption='Generated Heightmap', use_container_width=True)
+            st.image(st.session_state.heightmap_array, caption='Generated Heightmap', width='stretch')
             buf = io.BytesIO()
             Image.fromarray(st.session_state.heightmap_array).save(buf, format="PNG")
             st.download_button("Download Heightmap", buf.getvalue(), "heightmap.png", "image/png", key="dl_heightmap")
 
         with col2:
             st.header("Insert Map")
-            st.image(st.session_state.insert_map_array, caption='Generated Insert Map', use_container_width=True)
+            st.image(st.session_state.insert_map_array, caption='Generated Insert Map', width='stretch')
             buf = io.BytesIO()
             Image.fromarray(st.session_state.insert_map_array).save(buf, format="PNG")
             st.download_button("Download Insert Map", buf.getvalue(), "insert_map.png", "image/png", key="dl_insertmap")
 
         col1, col2 = st.columns(2)
         with col1:
-            generate_cutter = st.button("Generate 3D Cutter", use_container_width=True)
+            generate_cutter = st.button("Generate 3D Cutter", width='stretch')
         with col2:
-            generate_insert = st.button("Generate Insert", use_container_width=True)
+            generate_insert = st.button("Generate Insert", width='stretch')
 
         if 'cutter_mesh' not in st.session_state:
             st.session_state.cutter_mesh = None
@@ -278,9 +282,10 @@ if uploaded_file is not None:
             progress_bar.progress(33)
 
             status_text.text("Step 2/3: Scaling and centering mesh...")
-            cutter_mesh,scale_transform,center_transform = scale_and_center_mesh(mesh, params)
-            st.session_state.scale_transform = scale_transform
-            st.session_state.center_transform = center_transform
+            sct,ct= get_transforms(st.session_state.heightmap_array, params)
+            st.session_state.scale_transform = sct
+            st.session_state.center_transform = ct
+            cutter_mesh = scale_and_center_mesh(mesh, st.session_state.scale_transform, st.session_state.center_transform)
             st.session_state.cutter_mesh = cutter_mesh
             progress_bar.progress(66)
 
@@ -305,8 +310,11 @@ if uploaded_file is not None:
 
             status_text.text("Step 2/3: Scaling and centering mesh...")
             insert_params = params.copy()
+            sct,ct= get_transforms(st.session_state.heightmap_array, params)
+            st.session_state.scale_transform = sct
+            st.session_state.center_transform = ct            
             insert_params['h_max'] = params.get('h_max', 15.0) + 1.0  # Add extra height for insert
-            insert_mesh,_,_ = scale_and_center_mesh(insert_mesh_raw, insert_params, scale_transform=st.session_state.scale_transform, center_transform=st.session_state.center_transform)
+            insert_mesh = scale_and_center_mesh(insert_mesh_raw, st.session_state.scale_transform, st.session_state.center_transform)
             st.session_state.insert_mesh = insert_mesh
             progress_bar.progress(66)
 
@@ -342,7 +350,7 @@ if uploaded_file is not None:
                     with io.BytesIO() as f:
                         st.session_state.cutter_mesh.export(f, file_type='stl'); f.seek(0)
                         stl_data = f.read()
-                    st.download_button(label="📥 Download Cutter STL", data=stl_data, file_name=f"cutter_{st.session_state.output_filename}", mime="model/stl", use_container_width=True)
+                    st.download_button(label="📥 Download Cutter STL", data=stl_data, file_name=f"cutter_{st.session_state.output_filename}", mime="model/stl", width='stretch')
 
             # Insert Preview
             with col2:
@@ -357,7 +365,7 @@ if uploaded_file is not None:
                     with io.BytesIO() as f:
                         st.session_state.insert_mesh.export(f, file_type='stl'); f.seek(0)
                         stl_data = f.read()
-                    st.download_button(label="📥 Download Insert STL", data=stl_data, file_name=f"insert_{st.session_state.output_filename}", mime="model/stl", use_container_width=True)
+                    st.download_button(label="📥 Download Insert STL", data=stl_data, file_name=f"insert_{st.session_state.output_filename}", mime="model/stl", width='stretch')
 
             # Both Preview
             with col3:
@@ -374,7 +382,7 @@ if uploaded_file is not None:
                         combined_mesh = trimesh.util.concatenate(st.session_state.cutter_mesh, st.session_state.insert_mesh)
                         combined_mesh.export(f, file_type='stl'); f.seek(0)
                         stl_data = f.read()
-                    st.download_button(label="📥 Download Combined STL", data=stl_data, file_name=f"combined_{st.session_state.output_filename}", mime="model/stl", use_container_width=True)
+                    st.download_button(label="📥 Download Combined STL", data=stl_data, file_name=f"combined_{st.session_state.output_filename}", mime="model/stl", width='stretch')
 
         elif generate_cutter or generate_insert:
             st.error("Could not generate a 3D model. This can happen if the image is empty or too simple. Try a different image or adjust the processing parameters.")
