@@ -1,4 +1,4 @@
-streamlit
+streamlit==1.48
 opencv-python-headless
 numpy
 Pillow
@@ -12,3 +12,4 @@ vtk
 manifold3d
 pydeck
 pandas
+panel==1.4.0
