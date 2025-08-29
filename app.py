@@ -18,6 +18,38 @@ from mesh import (
     scale_and_center_mesh
 )
 
+def modify_contours(pil_image, pixels):
+    """
+    Erodes or dilates the contours of an image.
+    - A positive 'pixels' value dilates the contours.
+    - A negative 'pixels' value erodes the contours.
+    """
+    gray = np.array(pil_image.convert('L'))
+
+    # Inverted Otsu to get white contours on black background
+    _, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+
+    # Kernel size must be a positive integer. The absolute value of 'pixels'
+    # determines the magnitude of the operation.
+    kernel_size = abs(pixels)
+    if kernel_size == 0:
+        return pil_image
+
+    kernel = np.ones((kernel_size, kernel_size), np.uint8)
+
+    # The sign of 'pixels' determines the operation (dilate or erode).
+    if pixels > 0: # Dilate
+        modified_thresh = cv2.dilate(thresh, kernel, iterations=1)
+    elif pixels < 0: # Erode
+        modified_thresh = cv2.erode(thresh, kernel, iterations=1)
+    else: # No change
+        return pil_image
+
+    # Reverse the inverse to get black contours on white background
+    final_image_np = cv2.bitwise_not(modified_thresh)
+
+    return Image.fromarray(final_image_np)
+
 # --- Setup ---
 try:
     start_xvfb()
@@ -48,6 +80,15 @@ st.sidebar.download_button(
     label="Download Config", data=config_str, file_name="cookie_config.json", mime="application/json"
 )
 
+st.sidebar.header("Contour Adjustment")
+st.sidebar.info("Note: The contours get automatically thickened to make them printable (see 'Cutting Edge Width').")
+adjustment_pixels = st.sidebar.number_input("Adjustment in Pixels", min_value=0, value=2, step=1)
+
+col1, col2, col3 = st.sidebar.columns(3)
+erode_button = col1.button("Erode")
+dilate_button = col2.button("Dilate")
+reset_button = col3.button("Reset")
+
 # --- Main Page UI ---
 uploaded_file = st.file_uploader("Choose an image...", type=["png", "jpg", "jpeg", "bmp"])
 
@@ -59,7 +100,23 @@ if 'outside_mask' not in st.session_state:
     st.session_state.outside_mask = None
 
 if uploaded_file is not None:
-    image = Image.open(uploaded_file)
+    # Initialize session state for image
+    if "current_file_name" not in st.session_state or st.session_state.current_file_name != uploaded_file.name:
+        st.session_state.current_file_name = uploaded_file.name
+        st.session_state.original_image = Image.open(uploaded_file)
+        st.session_state.active_image = st.session_state.original_image
+        st.session_state.canvas_json_data = None
+
+    # Handle button clicks to apply cumulative adjustments
+    if erode_button:
+        st.session_state.active_image = modify_contours(st.session_state.active_image, -adjustment_pixels)
+    if dilate_button:
+        st.session_state.active_image = modify_contours(st.session_state.active_image, adjustment_pixels)
+    if reset_button:
+        st.session_state.active_image = st.session_state.original_image
+
+    image = st.session_state.active_image
+
 
     # Resize image based on DPI
     dpi = params.get("dpi", 200)
