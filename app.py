@@ -162,19 +162,35 @@ if uploaded_file is not None:
     if st.session_state.pipette_active:
         st.sidebar.info("Pipette is active. Draw on the image to pick the average color of your stroke.")
 
-    canvas_result = st_canvas(
-        fill_color="rgba(255, 165, 0, 0.3)",
-        stroke_width=stroke_width,
-        stroke_color=st.session_state.picked_color,
-        background_image=image,
-        update_streamlit=True,
-        height=new_height,
-        width=new_width,
-        drawing_mode="freedraw",
-        key="canvas",
-        display_toolbar=True,
-        initial_drawing=st.session_state.canvas_json_data,
-    )
+    # Create a container for the canvas
+    canvas_container = st.container()
+
+    # Define a maximum width for the canvas
+    CONTAINER_WIDTH = 730  # Max width for Streamlit's main container area
+    canvas_width = min(new_width, CONTAINER_WIDTH)
+    canvas_height = int(canvas_width * new_height / new_width) if new_width > 0 else 0
+
+    with canvas_container:
+        canvas_result = st_canvas(
+            fill_color="rgba(255, 165, 0, 0.3)",
+            stroke_width=stroke_width,
+            stroke_color=st.session_state.picked_color,
+            background_image=image,
+            update_streamlit=True,
+            height=canvas_height,
+            width=canvas_width,
+            drawing_mode="freedraw",
+            key="canvas",
+            display_toolbar=True,
+            initial_drawing=st.session_state.canvas_json_data,
+        )
+
+    # Resize the drawing back to the original image dimensions if the canvas was scaled
+    if canvas_result.image_data is not None and (canvas_width != new_width or canvas_height != new_height):
+        drawn_image = Image.fromarray(canvas_result.image_data)
+        resized_drawing = drawn_image.resize((new_width, new_height), Image.Resampling.LANCZOS)
+        canvas_result.image_data = np.array(resized_drawing)
+
 
     if canvas_result.json_data and st.session_state.pipette_active:
         try:
@@ -248,14 +264,14 @@ if uploaded_file is not None:
         col1, col2 = st.columns(2)
         with col1:
             st.header("Heightmap")
-            st.image(st.session_state.heightmap_array, caption='Generated Heightmap', width='stretch')
+            st.image(st.session_state.heightmap_array, caption='Generated Heightmap', use_container_width=True)
             buf = io.BytesIO()
             Image.fromarray(st.session_state.heightmap_array).save(buf, format="PNG")
             st.download_button("Download Heightmap", buf.getvalue(), "heightmap.png", "image/png", key="dl_heightmap")
 
         with col2:
             st.header("Insert Map")
-            st.image(st.session_state.insert_map_array, caption='Generated Insert Map', width='stretch')
+            st.image(st.session_state.insert_map_array, caption='Generated Insert Map', use_container_width=True)
             buf = io.BytesIO()
             Image.fromarray(st.session_state.insert_map_array).save(buf, format="PNG")
             st.download_button("Download Insert Map", buf.getvalue(), "insert_map.png", "image/png", key="dl_insertmap")
@@ -341,7 +357,7 @@ if uploaded_file is not None:
             with col1:
                 if st.session_state.cutter_mesh:
                     st.subheader("Cutter")
-                    plotter_cutter = pv.Plotter(window_size=[400, 400], border=False)
+                    plotter_cutter = pv.Plotter(border=False)
                     plotter_cutter.add_mesh(pv.wrap(st.session_state.cutter_mesh), name='cutter', color='lightblue', smooth_shading=True, specular=0.5, ambient=0.3)
                     plotter_cutter.view_isometric()
                     plotter_cutter.background_color = 'white'
@@ -356,7 +372,7 @@ if uploaded_file is not None:
             with col2:
                 if st.session_state.insert_mesh:
                     st.subheader("Insert")
-                    plotter_insert = pv.Plotter(window_size=[400, 400], border=False)
+                    plotter_insert = pv.Plotter(border=False)
                     plotter_insert.add_mesh(pv.wrap(st.session_state.insert_mesh), name='insert', color='lightgreen', smooth_shading=True, specular=0.5, ambient=0.3)
                     plotter_insert.view_isometric()
                     plotter_insert.background_color = 'white'
@@ -371,7 +387,7 @@ if uploaded_file is not None:
             with col3:
                 if st.session_state.cutter_mesh and st.session_state.insert_mesh:
                     st.subheader("Both")
-                    plotter_both = pv.Plotter(window_size=[400, 400], border=False)
+                    plotter_both = pv.Plotter(border=False)
                     plotter_both.add_mesh(pv.wrap(st.session_state.cutter_mesh), name='cutter', color='lightblue', smooth_shading=True, specular=0.5, ambient=0.3)
                     plotter_both.add_mesh(pv.wrap(st.session_state.insert_mesh), name='insert', color='lightgreen', smooth_shading=True, specular=0.5, ambient=0.3)
                     plotter_both.view_isometric()
