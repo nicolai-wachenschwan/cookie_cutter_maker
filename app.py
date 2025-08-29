@@ -248,23 +248,23 @@ if uploaded_file is not None:
         col1, col2 = st.columns(2)
         with col1:
             st.header("Heightmap")
-            st.image(st.session_state.heightmap_array, caption='Generated Heightmap', width='stretch')
+            st.image(st.session_state.heightmap_array, caption='Generated Heightmap', use_container_width=True)
             buf = io.BytesIO()
             Image.fromarray(st.session_state.heightmap_array).save(buf, format="PNG")
             st.download_button("Download Heightmap", buf.getvalue(), "heightmap.png", "image/png", key="dl_heightmap")
 
         with col2:
             st.header("Insert Map")
-            st.image(st.session_state.insert_map_array, caption='Generated Insert Map', width='stretch')
+            st.image(st.session_state.insert_map_array, caption='Generated Insert Map', use_container_width=True)
             buf = io.BytesIO()
             Image.fromarray(st.session_state.insert_map_array).save(buf, format="PNG")
             st.download_button("Download Insert Map", buf.getvalue(), "insert_map.png", "image/png", key="dl_insertmap")
 
         col1, col2 = st.columns(2)
         with col1:
-            generate_cutter = st.button("Generate 3D Cutter", width='stretch')
+            generate_cutter = st.button("Generate 3D Cutter", use_container_width=True)
         with col2:
-            generate_insert = st.button("Generate Insert", width='stretch')
+            generate_insert = st.button("Generate Insert", use_container_width=True)
 
         if 'cutter_mesh' not in st.session_state:
             st.session_state.cutter_mesh = None
@@ -350,7 +350,7 @@ if uploaded_file is not None:
                     with io.BytesIO() as f:
                         st.session_state.cutter_mesh.export(f, file_type='stl'); f.seek(0)
                         stl_data = f.read()
-                    st.download_button(label="📥 Download Cutter STL", data=stl_data, file_name=f"cutter_{st.session_state.output_filename}", mime="model/stl", width='stretch')
+                    st.download_button(label="📥 Download Cutter STL", data=stl_data, file_name=f"cutter_{st.session_state.output_filename}", mime="model/stl", use_container_width=True)
 
             # Insert Preview
             with col2:
@@ -365,7 +365,7 @@ if uploaded_file is not None:
                     with io.BytesIO() as f:
                         st.session_state.insert_mesh.export(f, file_type='stl'); f.seek(0)
                         stl_data = f.read()
-                    st.download_button(label="📥 Download Insert STL", data=stl_data, file_name=f"insert_{st.session_state.output_filename}", mime="model/stl", width='stretch')
+                    st.download_button(label="📥 Download Insert STL", data=stl_data, file_name=f"insert_{st.session_state.output_filename}", mime="model/stl", use_container_width=True)
 
             # Both Preview
             with col3:
@@ -382,7 +382,7 @@ if uploaded_file is not None:
                         combined_mesh = trimesh.util.concatenate(st.session_state.cutter_mesh, st.session_state.insert_mesh)
                         combined_mesh.export(f, file_type='stl'); f.seek(0)
                         stl_data = f.read()
-                    st.download_button(label="📥 Download Combined STL", data=stl_data, file_name=f"combined_{st.session_state.output_filename}", mime="model/stl", width='stretch')
+                    st.download_button(label="📥 Download Combined STL", data=stl_data, file_name=f"combined_{st.session_state.output_filename}", mime="model/stl", use_container_width=True)
 
         elif generate_cutter or generate_insert:
             st.error("Could not generate a 3D model. This can happen if the image is empty or too simple. Try a different image or adjust the processing parameters.")
