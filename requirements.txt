@@ -12,4 +12,3 @@ vtk
 manifold3d
 pydeck
 pandas
-bokeh==2.4.3
