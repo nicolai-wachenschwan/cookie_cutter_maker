@@ -13,3 +13,4 @@ manifold3d
 pydeck
 pandas
 panel==1.4.0
+streamlit-dimensions

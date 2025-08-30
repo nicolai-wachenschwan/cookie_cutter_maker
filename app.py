@@ -8,6 +8,7 @@ from stpyvista import stpyvista
 from stpyvista.utils import start_xvfb
 import trimesh
 from streamlit_drawable_canvas import st_canvas
+from streamlit_dimensions import st_dimensions
 import cv2
 
 # Import refactored logic
@@ -162,14 +163,36 @@ if uploaded_file is not None:
     if st.session_state.pipette_active:
         st.sidebar.info("Pipette is active. Draw on the image to pick the average color of your stroke.")
 
+    # Get screen dimensions with a fallback
+    screen_size = st_dimensions(key="screen_size")
+    max_w_dynamic = screen_size['width'] * 0.9 if screen_size and 'width' in screen_size else 1100
+    max_h_dynamic = screen_size['height'] * 0.7 if screen_size and 'height' in screen_size else 700
+
+    w, h = image.size
+
+    # Calculate display scaling
+    scale = min(1.0, min(max_w_dynamic / w, max_h_dynamic / h)) if w > 0 and h > 0 else 1.0
+    display_w = int(w * scale)
+    display_h = int(h * scale)
+
+    st.markdown(f"**Interactive Canvas (Resolution: {w} × {h}px, Displayed as: {display_w} x {display_h}px)**")
+
+    # Scale stroke width for display on the scaled canvas
+    stroke_width_px_display = max(1, int(stroke_width * scale))
+
+    # Resize background for display
+    pil_bg_for_canvas = image
+    if scale < 1.0:
+        pil_bg_for_canvas = image.resize((display_w, display_h), Image.Resampling.LANCZOS)
+
     canvas_result = st_canvas(
         fill_color="rgba(255, 165, 0, 0.3)",
-        stroke_width=stroke_width,
+        stroke_width=stroke_width_px_display,
         stroke_color=st.session_state.picked_color,
-        background_image=image,
+        background_image=pil_bg_for_canvas,
         update_streamlit=True,
-        height=new_height,
-        width=new_width,
+        height=display_h,
+        width=display_w,
         drawing_mode="freedraw",
         key="canvas",
         display_toolbar=True,
@@ -184,9 +207,11 @@ if uploaded_file is not None:
             # Collect colors along the path
             colors = []
             for point in path:
-                x, y = int(point[1]), int(point[2])
-                if 0 <= x < image.width and 0 <= y < image.height:
-                    colors.append(image.getpixel((x, y)))
+                # Scale the coordinates back to the original image size
+                original_x = int(point[1] / scale)
+                original_y = int(point[2] / scale)
+                if 0 <= original_x < w and 0 <= original_y < h:
+                    colors.append(image.getpixel((original_x, original_y)))
             
             if colors:
                 # Calculate the average color
@@ -221,6 +246,14 @@ if uploaded_file is not None:
             background_gray = np.array(image.convert('L'))
 
             if drawing_layer_rgba is not None:
+                # The drawing layer is at the display resolution, scale it up to the original image resolution
+                # Ensure the data type is uint8 before resizing
+                drawing_layer_rgba_uint8 = drawing_layer_rgba.astype(np.uint8)
+                drawing_layer_rgba = cv2.resize(
+                    drawing_layer_rgba_uint8,
+                    (w, h), # (width, height) of the original image
+                    interpolation=cv2.INTER_LINEAR
+                )
                 background_rgb = cv2.cvtColor(background_gray, cv2.COLOR_GRAY2RGB)
                 alpha = drawing_layer_rgba[:, :, 3] / 255.0
                 alpha_mask = np.stack([alpha, alpha, alpha], axis=-1)
