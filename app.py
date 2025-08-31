@@ -58,9 +58,12 @@ try:
 except Exception as e:
     print("unable to start xvfb, when you run local this is fine!")#st.warning(f"(this is ok for local runs) Could not start virtual framebuffer: {e}")    
 st.set_page_config(layout="wide")
-st.title("🍪 Advanced Cookie Cutter Generator")
-st.write("Upload an image, adjust parameters, and generate a 3D model and insert for your cookie cutter.")
-
+st.title("🍪🔪 Cookie Cutter Generator")
+st.write("""You have a cool design and want to turn it into a cookie cutter? 
+         This tool helps you create a 3D printable model. 
+         Prerequisites: Dark contours on bright background, one enclosed shape. 
+         Adjust parameters in the sidebar as needed. 
+         Some shapes are difficult to get the dough out. You can use the insert to push it out reliably.""")
 
 # --- Sidebar UI ---
 st.sidebar.header("Processing Parameters")
@@ -70,26 +73,18 @@ params = {
     "h_max": st.sidebar.number_input("Total Height [mm]", min_value=1.0, value=15.0, step=0.5),
     "h_rim": st.sidebar.number_input("Base/Rim Height [mm]", min_value=0.1, value=2.0, step=0.1),
     "w_rim": st.sidebar.number_input("Rim Width [mm]", min_value=0.1, value=5.0, step=0.1),
-    "height_dough_thickness": st.sidebar.number_input("Dough Thickness [mm]", min_value=0.1, value=2.0, step=0.1),
+    "height_dough_thickness": st.sidebar.number_input("Dough Thickness [mm]", min_value=0.1, value=3.0, step=0.1),
     "h_inner": st.sidebar.number_input("Inner Wall Height [mm]", min_value=0.1, value=3.0, step=0.1),
     "small_fill": st.sidebar.number_input("Small Area Fill Threshold [mm^2]", min_value=0.0, value=10.0, step=0.1),
     "dpi": st.sidebar.number_input("DPI", min_value=50, value=200, step=10),
 }
-# Create a copy of params for JSON export, excluding Streamlit UI elements
-params_for_export = {k: v for k, v in params.items() if not hasattr(v, 'get')}
-config_str = json.dumps(params_for_export, indent=4)
-st.sidebar.download_button(
-    label="Download Config", data=config_str, file_name="cookie_config.json", mime="application/json"
-)
+# # Create a copy of params for JSON export, excluding Streamlit UI elements
+# params_for_export = {k: v for k, v in params.items() if not hasattr(v, 'get')}
+# config_str = json.dumps(params_for_export, indent=4)
+# st.sidebar.download_button(
+#     label="Download Config", data=config_str, file_name="cookie_config.json", mime="application/json"
+# )
 
-st.sidebar.header("Contour Adjustment")
-st.sidebar.info("Note: The contours get automatically thickened to make them printable (see 'Cutting Edge Width').")
-adjustment_pixels = st.sidebar.number_input("Adjustment in Pixels", min_value=0, value=2, step=1)
-
-col1, col2, col3 = st.sidebar.columns(3)
-erode_button = col1.button("Erode")
-dilate_button = col2.button("Dilate")
-reset_button = col3.button("Reset")
 
 # --- Main Page UI ---
 uploaded_file = st.file_uploader("Choose an image...", type=["png", "jpg", "jpeg", "bmp"])
@@ -108,7 +103,17 @@ if uploaded_file is not None:
         st.session_state.original_image = Image.open(uploaded_file)
         st.session_state.active_image = st.session_state.original_image
         st.session_state.canvas_json_data = None
+        
+    st.sidebar.header("Contour Adjustment")
+    st.info("""Note: The contours get automatically thickened to make them printable (see 'Cutting Edge Width').
+            If the contours look broken or have gaps, try increasing the DPI first.(Increases processing time)""")
+    col1, col2, col3 = st.sidebar.columns(3)
+    adjustment_pixels = st.sidebar.number_input("Adjustment in Pixels", min_value=0, value=2, step=1)
 
+    
+    erode_button = col1.button("Erode")
+    dilate_button = col2.button("Dilate")
+    reset_button = col3.button("Reset")
     # Handle button clicks to apply cumulative adjustments
     if erode_button:
         st.session_state.active_image = modify_contours(st.session_state.active_image, -adjustment_pixels)
@@ -138,7 +143,7 @@ if uploaded_file is not None:
     image = image.resize((new_width, new_height), Image.Resampling.LANCZOS).convert("RGBA")
     
     # --- Drawable Canvas ---
-    st.sidebar.header("Drawing Tools")
+    st.header("Drawing Tools")
 
     # Pipette color picker
     if 'picked_color' not in st.session_state:
@@ -149,19 +154,19 @@ if uploaded_file is not None:
         st.session_state.canvas_json_data = None
 
     # Drawing controls
-    stroke_width = st.sidebar.slider("Stroke width: ", 1, 25, 3)
     
     # Color picker with pipette
     #st.sidebar.markdown("##### Color Picker")
-    col1, col2 = st.sidebar.columns([1, 3])
-    with col1:
+    col1, col2,col3 = st.columns(3)
+    stroke_width = col1.slider("Stroke Width", min_value=1, max_value=50, value=5, step=1, help="Width of the drawing stroke in pixels")
+    with col3:
         if st.button("💧 Pick color from last stroke", help="Draw on the image to pick color from there and get the last stroke deleted"):
             st.session_state.pipette_active = not st.session_state.pipette_active
     with col2:
         st.session_state.picked_color = st.color_picker("Color", st.session_state.picked_color, label_visibility="collapsed")
 
     if st.session_state.pipette_active:
-        st.sidebar.info("Pipette is active. Draw on the image to pick the average color of your stroke.")
+        st.info("Pipette is active. Draw on the image to pick the average color of your stroke.")
 
     # Get screen dimensions with a fallback
     screen_size = st_dimensions(key="screen_size")
@@ -297,7 +302,7 @@ if uploaded_file is not None:
         with col1:
             generate_cutter = st.button("Generate 3D Cutter", use_container_width=True)
         with col2:
-            generate_insert = st.button("Generate Insert", use_container_width=True)
+            generate_insert = st.button("Generate Insert (takes a bit longer)", use_container_width=True)
 
         if 'cutter_mesh' not in st.session_state:
             st.session_state.cutter_mesh = None

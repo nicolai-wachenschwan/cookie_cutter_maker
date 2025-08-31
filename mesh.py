@@ -159,6 +159,17 @@ def get_transforms(heightmap_array, params):
     if heightmap_array is None:
         return None, None
 
+    # Find the bounding box of non-zero elements in the heightmap
+    non_zero_coords = np.argwhere(heightmap_array > 0)
+    if non_zero_coords.size == 0:
+        return None, None  # No content in the heightmap
+
+    min_coords = non_zero_coords.min(axis=0)
+    max_coords = non_zero_coords.max(axis=0)
+    
+    # The size of the content in pixels
+    content_size_pixels = max_coords - min_coords
+    
     # Create a temporary mesh to calculate the center
     temp_mesh = create_mesh_from_heightmap(heightmap_array)
     if temp_mesh.is_empty:
@@ -166,12 +177,18 @@ def get_transforms(heightmap_array, params):
 
     temp_mesh.process()
 
-    ppmm = params.get("ppmm", 3.77)  # 96dpi as fallback
-    if ppmm == 0:
-        return None, None  # Avoid division by zero
-    pixel_width_mm = 1.0 / ppmm
+    # Determine the scale factor to fit the target size
+    target_max_mm = params.get("target_max", 100.0)+2*params.get("w_rim", 5.0)  # in mm
+    
+    # content_size_pixels is [row, col], which corresponds to [y, x]
+    # We want to scale based on the larger of the x or y dimension
+    if content_size_pixels[1] == 0 or content_size_pixels[0] == 0:
+        scale_factor = 1.0
+    else:
+        scale_factor = target_max_mm / max(content_size_pixels[1], content_size_pixels[0])
+
     z_scale_mm = params['h_max'] / 255.0
-    scale_transform = trimesh.transformations.compose_matrix(scale=[pixel_width_mm, pixel_width_mm, z_scale_mm])
+    scale_transform = trimesh.transformations.compose_matrix(scale=[scale_factor, scale_factor, z_scale_mm])
 
     center = temp_mesh.bounds.mean(axis=0)
     center_transform = trimesh.transformations.translation_matrix(-center)
