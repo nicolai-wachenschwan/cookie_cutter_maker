@@ -135,6 +135,12 @@ def process_image(pil_image:Image, parameters:dict):
     #cv2.imshow('Connectors',connectors)
     composite = cv2.add(composite, connectors)
     composite = cv2.add(composite,small_contour_mask)
+    # all borders black pixels
+    composite[:,0]=0
+    composite[:,-1]=0
+    composite[0,:]=0
+    composite[-1,:]=0
+    #cv2.imwrite('composite.png', composite)
 
 
 

@@ -75,37 +75,51 @@ def create_mesh_from_heightmap(heightmap: np.ndarray, mask: np.ndarray = None) -
         # Fallback: leeres Mesh wenn keine gültigen Faces
         mesh = trimesh.Trimesh()
 
+    # Filtere Faces mit z-Normal > 0 und Centroid z < 0.5
+    if not mesh.is_empty:
+        face_normals = mesh.face_normals
+        face_centroids = mesh.triangles.mean(axis=1)
+        
+        # Maske für zu löschende Faces
+        mask_delete = (face_normals[:, 2] > 1e-6) & (face_centroids[:, 2] < 0.5)
+        
+        # Behalte nur die Faces, die nicht gelöscht werden sollen
+        faces_to_keep = mesh.faces[~mask_delete]
+        
+        # Erstelle ein neues Mesh mit den gefilterten Faces
+        # Dies entfernt auch unreferenzierte Vertices
+        mesh = trimesh.Trimesh(vertices=mesh.vertices, faces=faces_to_keep)
+        mesh.remove_unreferenced_vertices()
+
     return mesh
 
 
-def create_base_triangulation(mesh: trimesh.Trimesh, mask: np.ndarray = None, z_threshold: float = 1.0) -> trimesh.Trimesh:
+def create_base_triangulation(surface_mesh: trimesh.Trimesh, z_threshold: float = 0.5) -> trimesh.Trimesh:
     """
-    Erstellt eine triangulierte Grundfläche aus allen Vertices, die auf Z=0 oder Z<threshold liegen.
-    Filtert die Faces basierend auf deren Mittelpunkt - nur Faces deren Schwerpunkt in maskierten Bereichen liegt.
+    Erstellt eine triangulierte Grundfläche aus allen Vertices, die unter z_threshold liegen.
+    Filtert die Faces der Triangulierung, um nur die zu behalten, die von oben durch das Oberflächennetz verdeckt werden.
 
     Args:
-        mesh (trimesh.Trimesh): Das ursprüngliche Mesh
-        mask (np.ndarray, optional): Binäre Maske zur Filterung der Faces
-        z_threshold (float): Schwellwert für Z-Koordinate (Standard: 1.0)
+        surface_mesh (trimesh.Trimesh): Das ursprüngliche Oberflächennetz.
+        z_threshold (float): Schwellenwert für die Z-Koordinate.
 
     Returns:
-        trimesh.Trimesh: Neues Mesh mit triangulierter und gefilterter Grundfläche
+        trimesh.Trimesh: Neues Mesh mit triangulierter und gefilterter Grundfläche.
     """
     # Finde alle Vertices mit Z < threshold
-    base_mask = mesh.vertices[:, 2] < z_threshold
+    base_mask = surface_mesh.vertices[:, 2] < z_threshold
     if not np.any(base_mask):
         print("Warnung: Keine Vertices unter dem Z-Schwellwert gefunden, erstelle leeres Mesh.")
         return trimesh.Trimesh()
-    
-    base_vertices = mesh.vertices[base_mask]
 
-    # Falls weniger als 3 Vertices, kann nicht trianguliert werden
+    base_vertices = surface_mesh.vertices[base_mask]
+
     if len(base_vertices) < 3:
         print(f"Warnung: Nur {len(base_vertices)} Vertices gefunden, Triangulierung nicht möglich")
         return trimesh.Trimesh()
 
     # Projiziere die Vertices auf die XY-Ebene (Z=0)
-    points_2d = base_vertices[:, :2]  # Nur X und Y Koordinaten
+    points_2d = base_vertices[:, :2]
 
     try:
         # Delaunay-Triangulierung in 2D
@@ -115,37 +129,47 @@ def create_base_triangulation(mesh: trimesh.Trimesh, mask: np.ndarray = None, z_
         # Erstelle neue Vertices mit Z=0 für eine ebene Grundfläche
         base_vertices_flat = np.column_stack([points_2d, np.zeros(len(points_2d))])
 
-        # Filtere Faces basierend auf deren Mittelpunkt (falls Maske vorhanden)
-        if mask is not None:
-            valid_faces = []
-            h, w = mask.shape
+        # Erstelle einen Ray-Intersector für das Oberflächennetz
+        intersector = trimesh.ray.ray_pyembree.RayMeshIntersector(surface_mesh)
 
-            for face in all_faces:
-                # Berechne den Mittelpunkt (Schwerpunkt) des Dreiecks
-                v1, v2, v3 = base_vertices_flat[face]
-                centroid = (v1 + v2 + v3) / 3.0
-                cx, cy = int(centroid[0]), int(centroid[1])
+        # Filtere Faces basierend auf der Sichtbarkeit von oben
+        valid_faces = []
+        for face in all_faces:
+            # Berechne den Mittelpunkt (Schwerpunkt) des Dreiecks
+            v1, v2, v3 = base_vertices_flat[face]
+            centroid = (v1 + v2 + v3) / 3.0
+            
+            # Ray von knapp über dem Schwerpunkt in Z-Richtung
+            ray_origin = centroid + np.array([0, 0, 1e-4])
+            ray_direction = np.array([0, 0, 1])
 
-                # Prüfe ob Mittelpunkt innerhalb der Maskengrenzen und in maskiertem Bereich liegt
-                if 0 <= cy < h and 0 <= cx < w and mask[cy, cx] > 0:
-                    valid_faces.append(face)
+            # Prüfe, ob der Ray das Oberflächennetz von unten trifft
+            # Wir schauen von unten nach oben, also muss der Strahl etwas treffen
+            if intersector.intersects_any([ray_origin], [ray_direction]):
+                valid_faces.append(face)
 
-            if len(valid_faces) == 0:
-                print("Warnung: Keine gültigen Faces nach Masken-Filterung gefunden")
-                return trimesh.Trimesh()
+        if not valid_faces:
+            print("Warnung: Keine gültigen Faces nach dem Ray-Casting-Filter gefunden.")
+            return trimesh.Trimesh()
 
-            faces = np.array(valid_faces)
-        else:
-            faces = all_faces
+        faces = np.array(valid_faces)
 
         # Erstelle das neue Mesh
         base_mesh = trimesh.Trimesh(vertices=base_vertices_flat, faces=faces)
+        
+        # Bereinige das Mesh
+        base_mesh.remove_unreferenced_vertices()
+        base_mesh.remove_duplicate_faces()
+        
         base_mesh.invert()
 
         return base_mesh
 
     except ImportError:
         print("Fehler: scipy ist erforderlich für die Delaunay-Triangulierung")
+        return trimesh.Trimesh()
+    except Exception as e:
+        print(f"Ein Fehler ist aufgetreten: {e}")
         return trimesh.Trimesh()
 
 def merge_meshes(surface_mesh, base_mesh):
@@ -220,7 +244,7 @@ def generate_mesh(heightmap: np.ndarray, params: dict) -> trimesh.Trimesh:
 
     # 3. Create a triangulated base
     # Using a small z_threshold to select vertices close to the base plane.
-    triangulated_base = create_base_triangulation(surface_mesh, mask=dilated_map, z_threshold=1.0)
+    triangulated_base = create_base_triangulation(surface_mesh, z_threshold=0.5)
 
     # 4. Merge the meshes
     if triangulated_base and not triangulated_base.is_empty:
@@ -228,7 +252,12 @@ def generate_mesh(heightmap: np.ndarray, params: dict) -> trimesh.Trimesh:
     else:
         merged_mesh = surface_mesh
 
-    # 5. Fix normals and process
+
+    # Clean up the mesh after adding new faces
+    trimesh.repair.fill_holes(merged_mesh)
+    merged_mesh.remove_duplicate_faces()
+    merged_mesh.remove_unreferenced_vertices()
+    
     merged_mesh.fix_normals()
     merged_mesh.process()
 
