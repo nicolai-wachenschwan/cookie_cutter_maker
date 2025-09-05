@@ -259,7 +259,96 @@ def generate_mesh(heightmap: np.ndarray, params: dict) -> trimesh.Trimesh:
     merged_mesh.remove_unreferenced_vertices()
     
     merged_mesh.fix_normals()
-    merged_mesh.process()
+    merged_mesh.process(validate=True)
+    trimesh.repair.fill_holes(merged_mesh)
+
+    # Get unique edges and their counts
+    unique_edges, counts = np.unique(merged_mesh.edges_sorted, axis=0, return_counts=True)
+    
+    # Non-manifold edges are those that do not appear exactly twice
+    non_manifold_mask = counts != 2
+    non_manifold_edges = unique_edges[non_manifold_mask]
+
+    print(f"len(non-manifold-detected): {len(non_manifold_edges)}")
+
+    shared_vertex_count = 0
+    for i in range(len(non_manifold_edges)):
+        for j in range(i + 1, len(non_manifold_edges)):
+            edge1 = non_manifold_edges[i]
+            edge2 = non_manifold_edges[j]
+            if len(set(edge1) & set(edge2)) > 0:
+                shared_vertex_count += 1
+
+    print(f"Number of non-manifold edge pairs sharing at least one vertex: {shared_vertex_count}")
+
+    # --- Find loops ---
+    loops = []
+    if len(non_manifold_edges) > 0:
+        from trimesh.graph import connected_components
+
+        # Adjacency list for non-manifold edges
+        adj = {v: [] for v in np.unique(non_manifold_edges)}
+        for u, v in non_manifold_edges:
+            adj[u].append(v)
+            adj[v].append(u)
+
+        # Find loops by traversing
+        visited_nodes = set()
+        for start_node in adj:
+            if start_node not in visited_nodes:
+                q = [(start_node, [start_node])]
+                visited_in_path = {start_node}
+
+                while q:
+                    curr_node, path = q.pop(0)
+
+                    for neighbor in adj[curr_node]:
+                        if neighbor == path[-2] if len(path) > 1 else False:
+                            continue # Don't go back immediately
+
+                        if neighbor == start_node and len(path) > 2:
+                            loops.append(path)
+                            for node in path:
+                                visited_nodes.add(node)
+                            q = [] # End search for this component
+                            break
+                        
+                        if neighbor not in visited_in_path:
+                            visited_in_path.add(neighbor)
+                            new_path = path + [neighbor]
+                            q.append((neighbor, new_path))
+
+    # --- Count loops ---
+    loop_counts = {}
+    if loops:
+        for loop in loops:
+            length = len(loop)
+            loop_counts[length] = loop_counts.get(length, 0) + 1
+
+    print("How many boundary loops where found?")
+    if not loop_counts:
+        print("No loops found.")
+    else:
+        for length, count in loop_counts.items():
+            if length == 3:
+                print(f"- {count} triangles")
+            elif length == 4:
+                print(f"- {count} quads")
+            else:
+                print(f"- {count} loops with {length} edges")
+
+    # --- Add faces for triangular loops ---
+    new_faces = []
+    if loops:
+        for loop in loops:
+            if len(loop) == 3:
+                new_faces.append(loop)
+
+    if new_faces:
+        print(f"Adding {len(new_faces)} new faces for the triangular holes.")
+        merged_mesh.faces = np.vstack([merged_mesh.faces, new_faces])
+        merged_mesh.process() # Re-process the mesh after adding faces
+        merged_mesh.fix_normals()
 
     return merged_mesh
 
