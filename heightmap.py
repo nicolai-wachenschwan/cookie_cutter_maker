@@ -199,6 +199,39 @@ def process_image(pil_image:Image, parameters:dict):
     #insert_map.save('insert_map.png')
     
 
+def modify_contours(pil_image, pixels):
+    """
+    Erodes or dilates the contours of an image.
+    - A positive 'pixels' value dilates the contours.
+    - A negative 'pixels' value erodes the contours.
+    """
+    gray = np.array(pil_image.convert('L'))
+
+    # Inverted Otsu to get white contours on black background
+    _, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+
+    # Kernel size must be a positive integer. The absolute value of 'pixels'
+    # determines the magnitude of the operation.
+    kernel_size = abs(pixels)
+    if kernel_size == 0:
+        return pil_image
+
+    kernel = np.ones((kernel_size, kernel_size), np.uint8)
+
+    # The sign of 'pixels' determines the operation (dilate or erode).
+    if pixels > 0: # Dilate
+        modified_thresh = cv2.dilate(thresh, kernel, iterations=1)
+    elif pixels < 0: # Erode
+        modified_thresh = cv2.erode(thresh, kernel, iterations=1)
+    else: # No change
+        return pil_image
+
+    # Reverse the inverse to get black contours on white background
+    final_image_np = cv2.bitwise_not(modified_thresh)
+
+    return Image.fromarray(final_image_np)
+
+
 if __name__ == "__main__":
     # Example usage
     image_path = 'Cookie_Test_Image.png'  # Path to your image

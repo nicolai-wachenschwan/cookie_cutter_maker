@@ -12,44 +12,13 @@ from streamlit_dimensions import st_dimensions
 import cv2
 
 # Import refactored logic
-from heightmap import process_image
+from heightmap import process_image, modify_contours
 from mesh import (
     generate_mesh,
     get_transforms,
     scale_and_center_mesh
 )
 
-def modify_contours(pil_image, pixels):
-    """
-    Erodes or dilates the contours of an image.
-    - A positive 'pixels' value dilates the contours.
-    - A negative 'pixels' value erodes the contours.
-    """
-    gray = np.array(pil_image.convert('L'))
-
-    # Inverted Otsu to get white contours on black background
-    _, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
-
-    # Kernel size must be a positive integer. The absolute value of 'pixels'
-    # determines the magnitude of the operation.
-    kernel_size = abs(pixels)
-    if kernel_size == 0:
-        return pil_image
-
-    kernel = np.ones((kernel_size, kernel_size), np.uint8)
-
-    # The sign of 'pixels' determines the operation (dilate or erode).
-    if pixels > 0: # Dilate
-        modified_thresh = cv2.dilate(thresh, kernel, iterations=1)
-    elif pixels < 0: # Erode
-        modified_thresh = cv2.erode(thresh, kernel, iterations=1)
-    else: # No change
-        return pil_image
-
-    # Reverse the inverse to get black contours on white background
-    final_image_np = cv2.bitwise_not(modified_thresh)
-
-    return Image.fromarray(final_image_np)
 
 # --- Setup ---
 try:
@@ -63,6 +32,9 @@ st.write("""You have a cool design and want to turn it into a cookie cutter?
          Prerequisites: Dark contours on bright background, one enclosed shape. 
          Adjust parameters in the sidebar as needed. 
          Some shapes are difficult to get the dough out. You can use the insert to push it out reliably.""")
+st.expander("How to get the pictures prepared", expanded=False).markdown(""" A) use your inspiration image and AI (Chatgpt&Co) to get the contour image.
+                                                                         B) Go extreme: Draw the lines on a paper and take a picture. You can dilate the contours in the sidebar if the lines are to thin. 
+                                                                         Tip: With a display you can trace lines easy.""")
 
 # --- Sidebar UI ---
 st.sidebar.header("Processing Parameters")
