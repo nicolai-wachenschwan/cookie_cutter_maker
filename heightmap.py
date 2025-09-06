@@ -100,7 +100,7 @@ def process_image(pil_image:Image, parameters:dict):
     color_inner=int((parameters.get("h_max")-parameters.get("height_dough_thickness"))/parameters.get("h_max")*255)
     color_rim=int(parameters.get("h_rim")/parameters.get("h_max")*255)
     color_connector=color_rim
-    color_small_contour=int(parameters.get("h_inner")/parameters.get("h_max")*255)
+    color_small_contour=color_inner
     small_thres=parameters.get("small_fill")# / (input_img.width/ppmm * input_img.height/ppmm)
 
     composite=np.zeros_like(binary_image,np.uint8)
@@ -163,9 +163,37 @@ def process_image(pil_image:Image, parameters:dict):
     erosion_kernel_size = int(1 * ppmm)
     erosion_kernel = np.ones((erosion_kernel_size, erosion_kernel_size), np.uint8)
     insert_map = cv2.erode(insert_map, erosion_kernel, iterations=1)
-    #cv2.imwrite('insert_map.png', insert_map)
+    
+    # --- Create Rim for Insert ---
+    h_rim = parameters.get("h_rim", 2.0)
+    h_max = parameters.get("h_max", 15.0)
 
-    return composite, insert_map, outside_mask
+    # The height for the rim, scaled to 0-255 range
+    rim_height_value = int((h_rim / (h_max + 1 + h_rim))*255)
+    print(f"Rim height value (0-255): {rim_height_value}")
+
+    insert_rim_binary=rim_binary.copy()
+    # @gemini: fill the contours in the rim_binary. 
+    contours, _ = cv2.findContours(insert_rim_binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    filled_rim = np.zeros_like(insert_rim_binary)
+    cv2.drawContours(filled_rim, contours, -1, (rim_height_value), thickness=cv2.FILLED)
+    rim_only = cv2.bitwise_xor(filled_rim, insert_map)
+
+
+    # Combine the rim with the (now filled) insert
+    # The insert itself should be "full height" (255) to push out the dough
+    insert_map[insert_map > 0] = 255
+    
+    # Add the rim to the insert map
+    insert_with_rim = cv2.add(insert_map, rim_only)
+    #cv2.imwrite('insert_with_rim.png', insert_with_rim)
+    # all borders black pixels
+    insert_with_rim[:,0]=0
+    insert_with_rim[:,-1]=0
+    insert_with_rim[0,:]=0
+    insert_with_rim[-1,:]=0    
+
+    return composite, insert_with_rim
     #im_rgba=ImageOps.invert(im_rgba)
     #heightmap.save('heightmap.png')
     #insert_map.save('insert_map.png')
@@ -181,10 +209,9 @@ if __name__ == "__main__":
         "h_rim": 2.0,
         "w_rim": 8.0,
         "height_dough_thickness": 2.0,
-        "h_inner": 3.0,
         "small_fill": 10.0
     }
     pil_image = Image.open(image_path)
-    heightmap, insert_map, outer_mask = process_image(pil_image, params)
+    heightmap, insert_map_with_rim, outer_mask = process_image(pil_image, params)
     cv2.imwrite('heightmap.png', heightmap)
-    cv2.imwrite('insert_map.png', insert_map)
+    cv2.imwrite('insert_map_with_rim.png', insert_map_with_rim)

@@ -15,7 +15,6 @@ import cv2
 from heightmap import process_image
 from mesh import (
     generate_mesh,
-    generate_insert_mesh,
     get_transforms,
     scale_and_center_mesh
 )
@@ -74,7 +73,6 @@ params = {
     "h_rim": st.sidebar.number_input("Base/Rim Height [mm]", min_value=0.1, value=2.0, step=0.1),
     "w_rim": st.sidebar.number_input("Rim Width [mm]", min_value=0.1, value=5.0, step=0.1),
     "height_dough_thickness": st.sidebar.number_input("Dough Thickness [mm]", min_value=0.1, value=3.0, step=0.1),
-    "h_inner": st.sidebar.number_input("Inner Wall Height [mm]", min_value=0.1, value=3.0, step=0.1),
     "small_fill": st.sidebar.number_input("Small Area Fill Threshold [mm^2]", min_value=0.0, value=10.0, step=0.1),
     "dpi": st.sidebar.number_input("DPI", min_value=50, value=200, step=10),
 }
@@ -93,8 +91,7 @@ if 'heightmap_array' not in st.session_state:
     st.session_state.heightmap_array = None
 if 'insert_map_array' not in st.session_state:
     st.session_state.insert_map_array = None
-if 'outside_mask' not in st.session_state:
-    st.session_state.outside_mask = None
+
 
 if uploaded_file is not None:
     # Initialize session state for image
@@ -270,10 +267,10 @@ if uploaded_file is not None:
                 st.warning("No canvas data received. Proceeding with the unmodified image.")
                 final_image = image
 
-            heightmap_array, insert_map_array, outside_mask = process_image(final_image, params)
+            heightmap_array, insert_map_array= process_image(final_image, params)
             st.session_state.heightmap_array = heightmap_array
             st.session_state.insert_map_array = insert_map_array
-            st.session_state.outside_mask = outside_mask
+
 
             # Get heightmap dimensions for centering
             h, w = heightmap_array.shape
@@ -302,7 +299,7 @@ if uploaded_file is not None:
         with col1:
             generate_cutter = st.button("Generate 3D Cutter", use_container_width=True)
         with col2:
-            generate_insert = st.button("Generate Insert (takes a bit longer)", use_container_width=True)
+            generate_insert = st.button("Generate Insert", use_container_width=True)
 
         if 'cutter_mesh' not in st.session_state:
             st.session_state.cutter_mesh = None
@@ -342,16 +339,16 @@ if uploaded_file is not None:
             status_text = st.empty()
 
             status_text.text("Step 1/3: Generating insert mesh...")
-            insert_mesh_raw = generate_insert_mesh(st.session_state.insert_map_array, st.session_state.outside_mask, params)
+            insert_params = params.copy()
+            insert_params['h_max'] = params.get('h_max', 15.0) + 1.0 +params.get('h_rim', 2.0) # Add extra height for insert            
+            insert_mesh_raw = generate_mesh(st.session_state.insert_map_array, insert_params)
 
             progress_bar.progress(33)
 
             status_text.text("Step 2/3: Scaling and centering mesh...")
-            insert_params = params.copy()
-            sct,ct= get_transforms(st.session_state.heightmap_array, params)
+            sct,ct= get_transforms(st.session_state.heightmap_array, insert_params)
             st.session_state.scale_transform = sct
             st.session_state.center_transform = ct            
-            insert_params['h_max'] = params.get('h_max', 15.0) + 1.0  # Add extra height for insert
             insert_mesh = scale_and_center_mesh(insert_mesh_raw, st.session_state.scale_transform, st.session_state.center_transform)
             st.session_state.insert_mesh = insert_mesh
             progress_bar.progress(66)
