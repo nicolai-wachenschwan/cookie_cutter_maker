@@ -32,7 +32,7 @@ st.title("🍪🔪 Cookie Cutter Generator")
 col1, col2 = st.columns(2)
 
 with col1:
-    st.image("title_image.png", use_column_width=True)
+    st.image("title_image.png", use_container_width=True)
 
 with col2:
     st.write("""You have a cool design and want to turn it into a cookie cutter?
