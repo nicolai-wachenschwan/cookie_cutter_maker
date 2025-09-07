@@ -1,5 +1,7 @@
 # 🍪 Advanced Cookie Cutter Generator
 
+![Title Image](title_image.png)
+
 This project provides a web-based tool to convert any black and white image or scribble into a 3D-printable cookie cutter. The application is built with Streamlit and uses OpenCV for image processing and Trimesh for 3D mesh generation.
 
 Try it out here: [Cookie Cutter Maker](https://cookiecuttermaker.streamlit.app/)
