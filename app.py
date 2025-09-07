@@ -40,7 +40,7 @@ with col2:
              Prerequisites: Dark contours on bright background, one enclosed shape.
              Adjust parameters in the sidebar as needed.
              Some shapes are difficult to get the dough out. You can use the insert to push it out reliably.""")
-st.expander("How to get the pictures prepared", expanded=False).markdown(""" A) use your inspiration image and AI (Chatgpt&Co) to get the contour image.
+    st.expander("How to get the pictures prepared", expanded=False).markdown(""" A) use your inspiration image and AI (Chatgpt&Co) to get the contour image.
                                                                          B) Go extreme: Draw the lines on a paper and take a picture. You can dilate the contours in the sidebar if the lines are to thin. 
                                                                          Tip: With a display you can trace lines easy.""")
 
