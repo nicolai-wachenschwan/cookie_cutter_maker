@@ -1,10 +1,10 @@
 streamlit==1.48.0
 opencv-python-headless
 numpy==2.2.6
-Pillow==11.3.0
+Pillow
 trimesh==4.8.1
 git+https://github.com/nicolai-wachenschwan/streamlit-drawable-canvas.git
-scikit-image==0.25.2
+scikit-image
 scipy==1.16.2
 stpyvista==0.1.4
 pyvista==0.44.2
