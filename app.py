@@ -12,7 +12,7 @@ from streamlit_dimensions import st_dimensions
 import cv2
 
 # Import refactored logic
-from heightmap import process_image, modify_contours
+from heightmap import process_image, modify_contours, resize_darkest_pixel
 from mesh import (
     generate_mesh,
     get_transforms,
@@ -117,7 +117,7 @@ if uploaded_file is not None:
         new_height = new_size_px
         new_width = int(new_height * width / height)
 
-    image = image.resize((new_width, new_height), Image.Resampling.LANCZOS).convert("RGBA")
+    image = resize_darkest_pixel(image, new_width, new_height).convert("RGBA")
 
     # --- Drawable Canvas ---
     st.header("Drawing Tools")
