@@ -2,6 +2,7 @@ import numpy as np
 import cv2
 from PIL import Image
 from skimage.morphology import skeletonize
+import math
 
 
 def find_neighbour_contour(image, row, x, prev=True):
@@ -60,7 +61,7 @@ def process_image(pil_image:Image, parameters:dict):
     binary_image=closing.copy()
 
     #rim dilation 
-    rim_dilation_distance=int(ppmm*parameters.get("w_rim"))*2
+    rim_dilation_distance=int(math.ceil(ppmm*parameters.get("w_rim")))*2
     rim_kernel= np.ones((rim_dilation_distance, rim_dilation_distance), np.uint8)
     dil_4_rim=cv2.dilate(cv2.bitwise_not(binary_image), rim_kernel, iterations=1)
     #cv2.imwrite('dilated_rim.png', dil_4_rim)
@@ -73,7 +74,7 @@ def process_image(pil_image:Image, parameters:dict):
     skeleton_image = (skeleton * 255).astype(np.uint8)
     #cv2.imwrite('skeleton_image.png', skeleton_image)
     thresh=skeleton_image#cv2.bitwise_not(binary_image)
-    dilation_distance=int(ppmm*parameters.get("min_wall"))
+    dilation_distance=int(math.ceil(ppmm*parameters.get("min_wall")))
     kernel = np.ones((dilation_distance, dilation_distance), np.uint8)*255
     dilated_image = cv2.dilate(thresh, kernel, iterations=1)
     _,contours_binary=cv2.threshold(cv2.bitwise_or(dilated_image,cv2.bitwise_not(binary_image)),200,255,cv2.THRESH_BINARY)
@@ -160,7 +161,7 @@ def process_image(pil_image:Image, parameters:dict):
 
 
     # Erode 1mm to finalize the insert map
-    erosion_kernel_size = int(1 * ppmm)
+    erosion_kernel_size = int(math.ceil(1 * ppmm))
     erosion_kernel = np.ones((erosion_kernel_size, erosion_kernel_size), np.uint8)
     insert_map = cv2.erode(insert_map, erosion_kernel, iterations=1)
     
@@ -197,6 +198,45 @@ def process_image(pil_image:Image, parameters:dict):
     #im_rgba=ImageOps.invert(im_rgba)
     #heightmap.save('heightmap.png')
     #insert_map.save('insert_map.png')
+
+
+def resize_darkest_pixel(pil_image, target_width, target_height):
+    """
+    Resizes a PIL image to a target size by selecting the darkest pixel in each source region.
+    This is a form of min-pooling, ideal for preserving dark features like contours.
+    """
+    # Convert image to grayscale numpy array. In grayscale, darker is a lower value.
+    img_array = np.array(pil_image.convert('L'))
+    original_height, original_width = img_array.shape
+
+    # Create the output array, initialized to white (255)
+    output_array = np.full((target_height, target_width), 255, dtype=np.uint8)
+
+    # Calculate the size of the blocks in the original image
+    block_width = original_width / target_width
+    block_height = original_height / target_height
+
+    for y_out in range(target_height):
+        for x_out in range(target_width):
+            # Find the top-left and bottom-right corners of the block in the original image
+            x_start = int(round(x_out * block_width))
+            x_end = int(round((x_out + 1) * block_width))
+            y_start = int(round(y_out * block_height))
+            y_end = int(round((y_out + 1) * block_height))
+
+            # Ensure indices are within bounds
+            x_end = min(x_end, original_width)
+            y_end = min(y_end, original_height)
+
+            # Extract the block
+            block = img_array[y_start:y_end, x_start:x_end]
+
+            # If the block is not empty, find the minimum value (darkest pixel) and assign it
+            if block.size > 0:
+                min_val = np.min(block)
+                output_array[y_out, x_out] = min_val
+
+    return Image.fromarray(output_array)
     
 
 def modify_contours(pil_image, pixels):
