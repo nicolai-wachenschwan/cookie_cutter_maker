@@ -29,8 +29,8 @@ def process_image(pil_image:Image, parameters:dict):
 
     # 4. Morphologische Operationen zum Säubern
     # "Opening" entfernt kleine Störpixel (Pfeffer-Rauschen) im Hintergrund.
-    kernel = np.ones((3, 3), np.uint8)
-    opening = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, kernel, iterations=2)
+    kernel = np.ones((2, 2), np.uint8)
+    opening = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, kernel, iterations=1)
 
     # "Closing" füllt kleine Löcher im Objekt (Salz-Rauschen).
     closing = cv2.morphologyEx(opening, cv2.MORPH_CLOSE, kernel, iterations=2)
