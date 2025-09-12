@@ -43,6 +43,7 @@ with col2:
     st.expander("How to get the pictures prepared", expanded=False).markdown(""" A) use your inspiration image and AI (Chatgpt&Co) to get the contour image.
                                                                          B) Go extreme: Draw the lines on a paper and take a picture. You can dilate the contours in the sidebar if the lines are to thin. 
                                                                          Tip: With a display you can trace lines easy.""")
+    st.expander("Waht happens to the uploaded data?", expanded=False).markdown("""All your data is contained in your isolated private session. After session end everything is deleted.""")
 
 # --- Sidebar UI ---
 st.sidebar.header("Processing Parameters")
